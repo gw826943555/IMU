@@ -31,3 +31,7 @@
 # Debug files
 *.dSYM/
 *.su
+
+# Output files
+/MDK_Prj/Objects
+/MDK_Prj/Listings
