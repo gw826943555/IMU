@@ -2,69 +2,6 @@
 #define _IMU_H
 #include "stm32f4xx.h"
 #include "singleton.h"
-#define IMU0 						0
-#define IMU0_IT_PORT		GPIOE
-#define IMU0_IT_Pinx		GPIO_Pin_7
-
-#define IMU1 						1
-#define IMU1_IT_PORT		GPIOE
-#define IMU1_IT_Pinx		GPIO_Pin_10
-
-#define IMU2 						2
-#define IMU2_IT_PORT		GPIOB
-#define IMU2_IT_Pinx		GPIO_Pin_11
-
-#define IMU3 						3
-#define IMU3_IT_PORT		GPIOD
-#define IMU3_IT_Pinx		GPIO_Pin_8
-
-#define IMU4 						4
-#define IMU4_IT_PORT		GPIOB
-#define IMU4_IT_Pinx		GPIO_Pin_7
-
-#define IMU5 						5
-#define IMU5_IT_PORT		GPIOB
-#define IMU5_IT_Pinx		GPIO_Pin_6
-
-struct _ACCEL
-{
-	uint16_t x;
-	uint16_t y;
-	uint16_t z;
-};
-
-struct _GYRO
-{
-	uint16_t x;
-	uint16_t y;
-	uint16_t z;
-};
-
-struct _IMU_Data
-{
-	struct _ACCEL Accel;
-	struct _GYRO GYRO;
-	uint16_t Temp;
-	uint8_t timestamp;
-};
-
-typedef struct _IMU_Data IMU_Data;
-
-class Cimu
-{
-public:
-//	uint8_t ReadReg(uint8_t addr,SPI_TypeDef* SPIx,GPIO_TypeDef* GPIOx,uint16_t GPIO_Pin_x);
-	uint8_t ReadReg(uint8_t addr,uint16_t IMUx);
-	uint8_t WriteReg(uint8_t addr,uint8_t data,uint16_t IMUx);
-	void Init(uint8_t IMUx);
-	void Init_IT(void);
-	void Update(uint8_t IMUx);
-	IMU_Data GetData(uint8_t IMUx);
-private:
-	IMU_Data IMUData[6];
-};
-
-typedef NormalSingleton<Cimu> Imu;
 
 // 定义MPU9250内部寄存器
 #define SELF_TEST_X_GYRO								0x00
@@ -166,6 +103,150 @@ typedef NormalSingleton<Cimu> Imu;
 #define YA_OFFSET_H											0x7a								
 #define YA_OFFSET_L											0x7b											
 #define ZA_OFFSET_H											0x7d									
-#define ZA_OFFSET_L											0x7e										
+#define ZA_OFFSET_L											0x7e
+
+#define SPI1_DR_ADDR    (uint32_t)0x4001300C
+
+#define SPI1_CS1_Port 		GPIOA
+#define SPI1_CS1_Pinx			GPIO_Pin_3
+#define SPI1_FSYNC1_Port	GPIOE
+#define SPI1_FSYNC1_Pinx	GPIO_Pin_8
+#define SPI1_Int1_Port		GPIOE
+#define SPI1_Int1_Pinx		GPIO_Pin_7
+
+#define SPI1_CS2_Port 		GPIOE
+#define SPI1_CS2_Pinx			GPIO_Pin_9
+#define SPI1_FSYNC2_Port	GPIOE
+#define SPI1_FSYNC2_Pinx	GPIO_Pin_11
+#define SPI1_Int2_Port		GPIOE
+#define SPI1_Int2_Pinx		GPIO_Pin_10
+
+#define SPI2_CS1_Port 		GPIOB
+#define SPI2_CS1_Pinx			GPIO_Pin_11
+#define SPI2_FSYNC1_Port	GPIOD
+#define SPI2_FSYNC1_Pinx	GPIO_Pin_13
+#define SPI2_Int1_Port		GPIOD
+#define SPI2_Int1_Pinx		GPIO_Pin_12
+
+#define SPI2_CS2_Port 		GPIOD
+#define SPI2_CS2_Pinx			GPIO_Pin_8
+#define SPI2_FSYNC2_Port	GPIOD
+#define SPI2_FSYNC2_Pinx	GPIO_Pin_15
+#define SPI2_Int2_Port		GPIOD
+#define SPI2_Int2_Pinx		GPIO_Pin_14
+
+#define SPI3_CS1_Port 		GPIOB
+#define SPI3_CS1_Pinx			GPIO_Pin_7
+#define SPI3_FSYNC1_Port	GPIOD
+#define SPI3_FSYNC1_Pinx	GPIO_Pin_6
+#define SPI3_Int1_Port		GPIOD
+#define SPI3_Int1_Pinx		GPIO_Pin_5
+
+#define SPI3_CS2_Port 		GPIOB
+#define SPI3_CS2_Pinx			GPIO_Pin_6
+#define SPI3_FSYNC2_Port	GPIOD
+#define SPI3_FSYNC2_Pinx	GPIO_Pin_3
+#define SPI3_Int2_Port		GPIOD
+#define SPI3_Int2_Pinx		GPIO_Pin_4
+
+#define IMU0 						0
+#define IMU0_IT_PORT		GPIOE
+#define IMU0_IT_PORTSrc	EXTI_PortSourceGPIOE
+#define IMU0_IT_Pinx		GPIO_Pin_7
+#define IMU0_IT_PinSrc	EXTI_PinSource7
+#define IMU0_IT_Linex		EXTI_Line7
+#define IMU0_CS					(*((__IO uint32_t *)0x4240028C))				//PA3
+
+#define IMU1 						1
+#define IMU1_IT_PORT		GPIOE
+#define IMU1_IT_PORTSrc	EXTI_PortSourceGPIOE
+#define IMU1_IT_Pinx		GPIO_Pin_10
+#define IMU1_IT_PinSrc	EXTI_PinSource10
+#define IMU1_IT_Linex		EXTI_Line10
+#define IMU1_CS					(*((__IO uint32_t *)0x424202A4))				//PE9
+
+#define IMU2 						2
+#define IMU2_IT_PORT		GPIOD
+#define IMU2_IT_PORTSrc	EXTI_PortSourceGPIOD
+#define IMU2_IT_Pinx		GPIO_Pin_12
+#define IMU2_IT_PinSrc	EXTI_PinSource12
+#define IMU2_IT_Linex		EXTI_Line12
+#define IMU2_CS					(*((__IO uint32_t *)0x424082AC))				//PB11
+
+#define IMU3 						3
+#define IMU3_IT_PORT		GPIOD
+#define IMU3_IT_PORTSrc	EXTI_PortSourceGPIOD
+#define IMU3_IT_Pinx		GPIO_Pin_14
+#define IMU3_IT_PinSrc	EXTI_PinSource14
+#define IMU3_IT_Linex		EXTI_Line14
+#define IMU3_CS					(*((__IO uint32_t *)0x424182A0))				//PD8
+
+#define IMU4 						4
+#define IMU4_IT_PORT		GPIOD
+#define IMU4_IT_PORTSrc	EXTI_PortSourceGPIOD
+#define IMU4_IT_Pinx		GPIO_Pin_5
+#define IMU4_IT_PinSrc	EXTI_PinSource5
+#define IMU4_IT_Linex		EXTI_Line5
+#define IMU4_CS					(*((__IO uint32_t *)0x42408298))				//PB6
+
+#define IMU5 						5
+#define IMU5_IT_PORT		GPIOD
+#define IMU5_IT_PORTSrc	EXTI_PortSourceGPIOD
+#define IMU5_IT_Pinx		GPIO_Pin_4
+#define IMU5_IT_PinSrc	EXTI_PinSource4
+#define IMU5_IT_Linex		EXTI_Line4
+#define IMU5_CS					(*((__IO uint32_t *)0x4240829C))				//PB7
+
+#define SystickUsBase		168
+
+struct _ACCEL
+{
+	uint16_t x;
+	uint16_t y;
+	uint16_t z;
+};
+
+struct _GYRO
+{
+	uint16_t x;
+	uint16_t y;
+	uint16_t z;
+};
+
+struct _IMU_Data
+{
+	struct _ACCEL Accel;
+	struct _GYRO GYRO;
+	uint16_t Temp;
+	uint8_t timestamp;
+};
+
+typedef struct _IMU_Data IMU_Data;
+
+class Cimu
+{
+public:
+	uint8_t ReadReg(uint8_t addr,uint16_t IMUx);
+	uint8_t WriteReg(uint8_t addr,uint8_t data,uint16_t IMUx);
+	void Init_SPI(void);
+	void Init_DMA(void);
+	void Init(uint8_t IMUx);
+	void Init_IT(void);
+	void Update(uint8_t IMUx);
+	void AutoUpdate(FunctionalState state);
+	void EnableITx(uint8_t IMUx,FunctionalState state);
+	IMU_Data GetData(uint8_t IMUx);
+	void IT_Handler(void);
+	uint32_t GetSampleCount(uint8_t IMUx);
+	void DMARead(SPI_TypeDef* SPIx,uint8_t* tx_buf,uint8_t* rx_buf,uint16_t lenth);
+	uint16_t GetAccel(void);
+	uint8_t DMA_Buf[6][16];
+private:
+	IMU_Data IMUData[6];
+	uint32_t SampleCount[6];
+	
+};
+
+typedef NormalSingleton<Cimu> Imu;							
 #endif
 //end of file

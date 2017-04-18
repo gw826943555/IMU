@@ -8,6 +8,7 @@ CBaseTimer::CBaseTimer()// 要写完全!!!
 
 void CBaseTimer::initialize()
 {	
+	SystemCoreClockUpdate();
 	SysTick_Config(SystemCoreClock/1000);
 //	SysTick_CLKSourceConfig(SysTick_CLKSource_HCLK_Div8); //21MHz. Different from F1.
 //	SysTick_Config(SystemCoreClock/8/1000);

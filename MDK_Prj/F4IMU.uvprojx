@@ -132,12 +132,12 @@
             <UseExternalTool>0</UseExternalTool>
             <RunIndependent>0</RunIndependent>
             <UpdateFlashBeforeDebugging>1</UpdateFlashBeforeDebugging>
-            <Capability>0</Capability>
-            <DriverSelection>-1</DriverSelection>
+            <Capability>1</Capability>
+            <DriverSelection>4096</DriverSelection>
           </Flash1>
           <bUseTDR>1</bUseTDR>
           <Flash2>BIN\UL2CM3.DLL</Flash2>
-          <Flash3></Flash3>
+          <Flash3>"" ()</Flash3>
           <Flash4></Flash4>
           <pFcarmOut></pFcarmOut>
           <pFcarmGrp></pFcarmGrp>
@@ -333,7 +333,7 @@
             <v6Rtti>0</v6Rtti>
             <VariousControls>
               <MiscControls>--cpp</MiscControls>
-              <Define>STM32F40_41xxx,USE_STDPERIPH_DRIVER,STM32F407xx</Define>
+              <Define>STM32F40_41xxx,USE_STDPERIPH_DRIVER,STM32F407xx,EMPL_TARGET_STM32F4</Define>
               <Undefine></Undefine>
               <IncludePath>..\STM32F4xx_StdPeriph_Driver\inc;..\User;..\CMSIS\Include;..\CMSIS\Inc</IncludePath>
             </VariousControls>
@@ -405,11 +405,6 @@
               <FilePath>..\User\Imu.cpp</FilePath>
             </File>
             <File>
-              <FileName>Cspi.cpp</FileName>
-              <FileType>8</FileType>
-              <FilePath>..\User\Cspi.cpp</FilePath>
-            </File>
-            <File>
               <FileName>printf_.cpp</FileName>
               <FileType>8</FileType>
               <FilePath>..\User\printf_.cpp</FilePath>
@@ -423,11 +418,6 @@
               <FileName>misc.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\STM32F4xx_StdPeriph_Driver\src\misc.c</FilePath>
-            </File>
-            <File>
-              <FileName>stm32f4xx_dbgmcu.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\STM32F4xx_StdPeriph_Driver\src\stm32f4xx_dbgmcu.c</FilePath>
             </File>
             <File>
               <FileName>stm32f4xx_dma.c</FileName>
@@ -627,7 +617,7 @@
           </Files>
         </Group>
         <Group>
-          <GroupName>CMSIS</GroupName>
+          <GroupName>eMPL</GroupName>
         </Group>
         <Group>
           <GroupName>::CMSIS</GroupName>

@@ -48,8 +48,10 @@ class Cspi
 {
 public:
 	void Init(SPI_TypeDef *SPIx);
+	void InitDMA(SPI_TypeDef *SPIx);
 	void Bsp_Init(void);
-	uint8_t RWByte(uint8_t data,SPI_TypeDef* SPIx,GPIO_TypeDef* SPIx_CSx_Port,uint16_t SPIx_CSx_Pinx);
+private:
+	uint8_t Tx_buf[100],Rx_buf[100];
 };
 
 typedef NormalSingleton<Cspi> SPI;
