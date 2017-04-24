@@ -23,6 +23,7 @@
 #include "inv_mpu_dmp_motion_driver.h"
 #include "dmpKey.h"
 #include "dmpmap.h"
+#include "printf_.h"
 
 /* The following functions must be defined for this platform:
  * i2c_write(unsigned char slave_addr, unsigned char reg_addr,
@@ -62,6 +63,13 @@
 #define log_i       MPL_LOGI
 #define log_e       MPL_LOGE
 
+#elif defined EMPL_TARGET_STM32F4
+#include "imu.h"
+#include "printf_.h"
+#define delay_ms				delay_ms
+#define get_ms					mget_ms
+#define log_i(...)     do {} while (0)
+#define log_e(...)     do {} while (0)
 #else
 #error  Gyro driver is missing the system layer implementations.
 #endif
@@ -485,12 +493,12 @@ struct dmp_s {
 };
 
 static struct dmp_s dmp = {
-    .tap_cb = NULL,
-    .android_orient_cb = NULL,
-    .orient = 0,
-    .feature_mask = 0,
-    .fifo_rate = 0,
-    .packet_length = 0
+    NULL,
+    NULL,
+    0,
+    0,
+    0,
+    0
 };
 
 /**
@@ -499,8 +507,10 @@ static struct dmp_s dmp = {
  */
 int dmp_load_motion_driver_firmware(void)
 {
-    return mpu_load_firmware(DMP_CODE_SIZE, dmp_memory, sStartAddress,
+	int res=mpu_load_firmware(DMP_CODE_SIZE, dmp_memory, sStartAddress,
         DMP_SAMPLE_RATE);
+	myprintf("load dmp:%d\r\n",res);
+    return res;
 }
 
 /**
@@ -626,7 +636,7 @@ int dmp_set_accel_bias(long *bias)
 
     mpu_get_accel_sens(&accel_sens);
     accel_sf = (long long)accel_sens << 15;
-    __no_operation();
+//    __no_operation();
 
     accel_bias_body[0] = bias[dmp.orient & 3];
     if (dmp.orient & 4)

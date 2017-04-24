@@ -101,6 +101,21 @@ static inline int reg_int_cb(struct int_param_s *int_param)
 /* UC3 is a 32-bit processor, so abs and labs are equivalent. */
 #define labs        abs
 #define fabs(x)     (((x)>0)?(x):-(x))
+
+#elif defined EMPL_TARGET_STM32F4
+#include "stm32f4xx.h"
+#include "log.h"
+#include "imu.h"
+#include "printf_.h"
+#define i2c_write				MPU_Write
+#define i2c_read				MPU_Read
+#define delay_ms				delay_ms
+#define get_ms					mget_ms
+#define log_i						myprintf
+#define log_e						myprintf
+#define fabs						fabsf
+#define min(a,b) 				((a<b)?a:b)
+
 #else
 #error  Gyro driver is missing the system layer implementations.
 #endif
@@ -523,85 +538,87 @@ static struct gyro_state_s st = {
 };
 #elif defined MPU6500
 const struct gyro_reg_s reg = {
-    .who_am_i       = 0x75,
-    .rate_div       = 0x19,
-    .lpf            = 0x1A,
-    .prod_id        = 0x0C,
-    .user_ctrl      = 0x6A,
-    .fifo_en        = 0x23,
-    .gyro_cfg       = 0x1B,
-    .accel_cfg      = 0x1C,
-    .accel_cfg2     = 0x1D,
-    .lp_accel_odr   = 0x1E,
-    .motion_thr     = 0x1F,
-    .motion_dur     = 0x20,
-    .fifo_count_h   = 0x72,
-    .fifo_r_w       = 0x74,
-    .raw_gyro       = 0x43,
-    .raw_accel      = 0x3B,
-    .temp           = 0x41,
-    .int_enable     = 0x38,
-    .dmp_int_status = 0x39,
-    .int_status     = 0x3A,
-    .accel_intel    = 0x69,
-    .pwr_mgmt_1     = 0x6B,
-    .pwr_mgmt_2     = 0x6C,
-    .int_pin_cfg    = 0x37,
-    .mem_r_w        = 0x6F,
-    .accel_offs     = 0x77,
-    .i2c_mst        = 0x24,
-    .bank_sel       = 0x6D,
-    .mem_start_addr = 0x6E,
-    .prgm_start_h   = 0x70
+    0x75,
+    0x19,
+    0x1A,
+    0x0C,
+    0x6A,
+    0x23,
+    0x1B,
+    0x1C,
+    0x1D,
+    0x1E,
+    0x1F,
+    0x20,
+    0x72,
+    0x74,
+    0x43,
+    0x3B,
+    0x41,
+    0x38,
+    0x39,
+    0x3A,
+    0x69,
+    0x6B,
+    0x6C,
+    0x37,
+    0x6F,
+    0x77,
+    0x24,
+    0x6D,
+    0x6E,
+    0x70
 #ifdef AK89xx_SECONDARY
-    ,.raw_compass   = 0x49,
-    .s0_addr        = 0x25,
-    .s0_reg         = 0x26,
-    .s0_ctrl        = 0x27,
-    .s1_addr        = 0x28,
-    .s1_reg         = 0x29,
-    .s1_ctrl        = 0x2A,
-    .s4_ctrl        = 0x34,
-    .s0_do          = 0x63,
-    .s1_do          = 0x64,
-    .i2c_delay_ctrl = 0x67
+    ,0x49,
+    0x25,
+    0x26,
+    0x27,
+    0x28,
+    0x29,
+    0x2A,
+    0x34,
+    0x63,
+    0x64,
+    0x67
 #endif
 };
+
 const struct hw_s hw = {
-    .addr           = 0x68,
-    .max_fifo       = 1024,
-    .num_reg        = 128,
-    .temp_sens      = 321,
-    .temp_offset    = 0,
-    .bank_size      = 256
+    5,
+    1024,
+    128,
+    321,
+    0,
+    256
 #if defined AK89xx_SECONDARY
     ,.compass_fsr    = AK89xx_FSR
 #endif
 };
 
 const struct test_s test = {
-    .gyro_sens      = 32768/250,
-    .accel_sens     = 32768/2,  //FSR = +-2G = 16384 LSB/G
-    .reg_rate_div   = 0,    /* 1kHz. */
-    .reg_lpf        = 2,    /* 92Hz low pass filter*/
-    .reg_gyro_fsr   = 0,    /* 250dps. */
-    .reg_accel_fsr  = 0x0,  /* Accel FSR setting = 2g. */
-    .wait_ms        = 200,   //200ms stabilization time
-    .packet_thresh  = 200,    /* 200 samples */
-    .min_dps        = 20.f,  //20 dps for Gyro Criteria C
-    .max_dps        = 60.f, //Must exceed 60 dps threshold for Gyro Criteria B
-    .max_gyro_var   = .5f, //Must exceed +50% variation for Gyro Criteria A
-    .min_g          = .225f, //Accel must exceed Min 225 mg for Criteria B
-    .max_g          = .675f, //Accel cannot exceed Max 675 mg for Criteria B
-    .max_accel_var  = .5f,  //Accel must be within 50% variation for Criteria A
-    .max_g_offset   = .5f,   //500 mg for Accel Criteria C
-    .sample_wait_ms = 10    //10ms sample time wait
+    32768/250,
+    32768/2,  //FSR = +-2G = 16384 LSB/G
+    0,    /* 1kHz. */
+    2,    /* 92Hz low pass filter*/
+    0,    /* 250dps. */
+    0x0,  /* Accel FSR setting = 2g. */
+    200,   //200ms stabilization time
+    200,    /* 200 samples */
+    20.f,  //20 dps for Gyro Criteria C
+    60.f, //Must exceed 60 dps threshold for Gyro Criteria B
+    .5f, //Must exceed +50% variation for Gyro Criteria A
+    .225f, //Accel must exceed Min 225 mg for Criteria B
+    .675f, //Accel cannot exceed Max 675 mg for Criteria B
+    .5f,  //Accel must be within 50% variation for Criteria A
+    .5f,   //500 mg for Accel Criteria C
+    10    //10ms sample time wait
 };
 
 static struct gyro_state_s st = {
-    .reg = &reg,
-    .hw = &hw,
-    .test = &test
+    &reg,
+    &hw,
+		{0},
+    &test
 };
 #endif
 
@@ -758,8 +775,8 @@ int mpu_init(struct int_param_s *int_param)
     if (mpu_configure_fifo(0))
         return -1;
 
-    if (int_param)
-        reg_int_cb(int_param);
+//    if (int_param)
+//        reg_int_cb(int_param);
 
 #ifdef AK89xx_SECONDARY
     setup_compass();
@@ -915,7 +932,7 @@ int mpu_get_accel_reg(short *data, unsigned long *timestamp)
         return -1;
 
     if (i2c_read(st.hw->addr, st.reg->raw_accel, 6, tmp))
-        return -1;
+        return -2;
     data[0] = (tmp[0] << 8) | tmp[1];
     data[1] = (tmp[2] << 8) | tmp[3];
     data[2] = (tmp[4] << 8) | tmp[5];
@@ -2479,7 +2496,7 @@ static int get_st_6500_biases(long *gyro, long *accel, unsigned char hw_test, in
     accel[0] = accel[1] = accel[2] = 0;
 
     if(debug)
-    	log_i("Starting Bias Loop Reads\n");
+    	log_i("Starting Bias Loop Reads\r\n");
 
     //start reading samples
     while (s < test.packet_thresh) {
@@ -2516,7 +2533,7 @@ static int get_st_6500_biases(long *gyro, long *accel, unsigned char hw_test, in
     }
 
     if(debug)
-    	log_i("Samples: %d\n", s);
+    	log_i("Samples: %d\r\n", s);
 
     //stop FIFO
     data[0] = 0;
@@ -2870,8 +2887,8 @@ int mpu_load_firmware(unsigned short length, const unsigned char *firmware,
             return -1;
         if (mpu_read_mem(ii, this_write, cur))
             return -1;
-        if (memcmp(firmware+ii, cur, this_write))
-            return -2;
+//        if (memcmp(firmware+ii, cur, this_write))
+//            return -2;
     }
 
     /* Set program start address. */

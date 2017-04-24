@@ -246,6 +246,19 @@ private:
 	uint32_t SampleCount[6];
 	
 };
+//DMP接口函数
+uint8_t MPU_Read(uint8_t IMUx,uint8_t reg,uint8_t len,uint8_t * buf);
+uint8_t MPU_Write(uint8_t IMUx,uint8_t reg,uint8_t len, uint8_t *buf);
+uint8_t MPU_ReadReg(uint8_t IMUx,uint8_t reg);
+void delay_ms(uint16_t nms);
+void mget_ms(unsigned long *time);
+//DMP相关函数
+u8 run_self_test(void);
+unsigned short inv_orientation_matrix_to_scalar(const signed char *mtx);
+unsigned short inv_row_2_scale(const signed char *row);
+u8 mpu_dmp_init(void);
+u8 mpu_dmp_get_data(float *pitch,float *roll,float *yaw);
+int MPU_NormalInit(void);
 
 typedef NormalSingleton<Cimu> Imu;							
 #endif

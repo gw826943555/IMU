@@ -38,8 +38,15 @@ struct int_param_s {
     unsigned long pin;
     void (*cb)(volatile void*);
     void *arg;
+#elif defined EMPL_TARGET_STM32F4
+		unsigned int pin;
+		unsigned char lp_exit;
+		unsigned char active_low;
+		void (*cb)(void);
 #endif
 };
+
+extern struct gyro_state_s st;
 
 #define MPU_INT_STATUS_DATA_READY       (0x0001)
 #define MPU_INT_STATUS_DMP              (0x0002)
