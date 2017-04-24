@@ -38,8 +38,6 @@ struct int_param_s {
     unsigned long pin;
     void (*cb)(volatile void*);
     void *arg;
-#elif defined EMPL_TARGET_STM32F4
-    void (*cb)(void);
 #endif
 };
 
@@ -66,7 +64,7 @@ int mpu_set_bypass(unsigned char bypass_on);
 /* Configuration APIs */
 int mpu_lp_accel_mode(unsigned short rate);
 int mpu_lp_motion_interrupt(unsigned short thresh, unsigned char time,
-    unsigned short lpa_freq);
+    unsigned char lpa_freq);
 int mpu_set_int_level(unsigned char active_low);
 int mpu_set_int_latched(unsigned char enable);
 

@@ -32,16 +32,7 @@
  * delay_ms(unsigned long num_ms)
  * get_ms(unsigned long *count)
  */
-#if defined EMPL_TARGET_STM32F4
-#include "i2c.h"   
-#include "main.h"
-#include "board-st_discovery.h"
-   
-#define i2c_write   Sensors_I2C_WriteRegister
-#define i2c_read    Sensors_I2C_ReadRegister
-#define get_ms      get_tick_count
-
-#elif defined MOTION_DRIVER_TARGET_MSP430
+#if defined MOTION_DRIVER_TARGET_MSP430
 #include "msp430.h"
 #include "msp430_clock.h"
 #define delay_ms    msp430_delay_ms

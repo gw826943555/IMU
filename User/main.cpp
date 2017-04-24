@@ -25,10 +25,11 @@ int main(void)
 	Imu::Instance()->Init(IMU4);
 	Imu::Instance()->Init(IMU5);
 	Imu::Instance()->Init_IT();
-	Imu::Instance()->AutoUpdate(ENABLE);
 	Imu::Instance()->EnableITx(IMU0,ENABLE);
+	Imu::Instance()->EnableITx(IMU1,DISABLE);
+	Imu::Instance()->AutoUpdate(ENABLE);
 	LED::Instance()->OFF();
-	Timer HeartBeat(500,100);
+	Timer HeartBeat(500,1000);
 	Timer Delay(500,10);
 	uint32_t count=0;
 	uint32_t count1=0;
@@ -41,7 +42,10 @@ int main(void)
 			//myprintf("ID2:%2X\r\n",Imu::Instance()->ReadReg(ACCEL_XOUT_H,IMU0));
 			//Imu::Instance()->DMARead(SPI1,Tx_buf,Rx_buf,2);
 			//myprintf("ID3:%2X\r\n",Imu::Instance()->DMA_Buf[0][1]);
-			myprintf("ID4:%4X\r\n",(Imu::Instance()->DMA_Buf[0][1]<<8)+Imu::Instance()->DMA_Buf[0][2]);
+			myprintf("ID4:%4X\r\n",(Imu::Instance()->DMA_Buf[1][1]<<8)+Imu::Instance()->DMA_Buf[1][2]);
+			myprintf("ID5:%4X\r\n",(Imu::Instance()->DMA_Buf[0][1]<<8)+Imu::Instance()->DMA_Buf[0][2]);
+			myprintf("c0:%d\r\n",Imu::Instance()->GetSampleCount(IMU0));
+			myprintf("c1:%d\r\n",Imu::Instance()->GetSampleCount(IMU1));
 			LED::Instance()->Toggle();
 		}
 		if(Delay.isAbsoluteTimeUp())

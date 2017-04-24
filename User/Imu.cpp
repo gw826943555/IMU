@@ -234,8 +234,8 @@ void Cimu::Init_DMA(void)
 	DMA_Init(DMA2_Stream3, &DMA_InitStructure);
 	
 	NVIC_InitStructure.NVIC_IRQChannel=DMA2_Stream2_IRQn;
-	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority=0x01;
-	NVIC_InitStructure.NVIC_IRQChannelSubPriority=0x01;
+	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority=0x00;
+	NVIC_InitStructure.NVIC_IRQChannelSubPriority=0x00;
 	NVIC_InitStructure.NVIC_IRQChannelCmd=ENABLE;
 	NVIC_Init(&NVIC_InitStructure);
 	
@@ -245,14 +245,14 @@ void Cimu::Init_DMA(void)
 void Cimu::Init(uint8_t IMUx)
 {
 	WriteReg(PWR_MGMT_1,0x01,IMUx);			//½â³ýÐÝÃß£¬×Ô¶¯Ñ¡Ôñ×î¼ÑµÄÊ±ÖÓÔ´
-	WriteReg(CONFIG,0x07,IMUx);					//µÍÍ¨ÂË²¨ÆµÂÊ£¬µäÐÍÖµ£º0x07£¨3600Hz£© ¾ö¶¨Internal_Sample_Rate==8K
+	WriteReg(CONFIG,0x00,IMUx);					//µÍÍ¨ÂË²¨ÆµÂÊ£¬µäÐÍÖµ£º0x07£¨3600Hz£© ¾ö¶¨Internal_Sample_Rate==8K
 	
 	/**********************Init INT**********************************/	
 	WriteReg(INT_PIN_CFG ,0x10,IMUx);// INT PIN
 	WriteReg(INT_ENABLE,0x00,IMUx);
 	
 	/*******************Init GYRO and ACCEL******************************/	
-	WriteReg(SMPLRT_DIV, 0x07,IMUx);  //ÍÓÂÝÒÇ²ÉÑùÂÊ£¬µäÐÍÖµ£º0x07(1kHz) (SAMPLE_RATE= Internal_Sample_Rate / (1 + SMPLRT_DIV) )
+	WriteReg(SMPLRT_DIV, 0x17,IMUx);  //ÍÓÂÝÒÇ²ÉÑùÂÊ£¬µäÐÍÖµ£º0x07(1kHz) (SAMPLE_RATE= Internal_Sample_Rate / (1 + SMPLRT_DIV) )
 	WriteReg(GYRO_CONFIG, 0x18,IMUx); //ÍÓÂÝÒÇ×Ô¼ì¼°²âÁ¿·¶Î§£¬µäÐÍÖµ£º0x18(²»×Ô¼ì£¬2000deg/s)
 	WriteReg(ACCEL_CONFIG, 0x18,IMUx);//¼ÓËÙ¼Æ×Ô¼ì¡¢²âÁ¿·¶Î§¼°¸ßÍ¨ÂË²¨ÆµÂÊ£¬µäÐÍÖµ£º0x18(²»×Ô¼ì£¬16G)
 	WriteReg(ACCEL_CONFIG2, 0x08,IMUx);//¼ÓËÙ¼Æ¸ßÍ¨ÂË²¨ÆµÂÊ µäÐÍÖµ £º0x08  £¨1.13kHz£©	
@@ -368,7 +368,7 @@ void Cimu::AutoUpdate(FunctionalState state)
 	DMA2_Stream3->NDTR=16;
 	DMA2_Stream2->CR|=DMA_MemoryInc_Enable;
 	DMA2_Stream3->CR|=DMA_MemoryInc_Enable;
-	DMA2_Stream2->M0AR=(uint32_t)DMA_Buf[0];
+	DMA2_Stream2->M0AR=(uint32_t)DMA_Buf[0];					//ï¼ï¼ï¼IMU0ç¬¬ä¸€å¸§æ•°æ®å¯èƒ½å…¶ä»–IMUæ•°æ®
 	DMA2_Stream3->M0AR=(uint32_t)Tx_Buf;
 	DMA2_Stream2->M1AR=SPI1_DR_ADDR;
 	DMA2_Stream3->M1AR=SPI1_DR_ADDR;
@@ -381,6 +381,8 @@ void Cimu::AutoUpdate(FunctionalState state)
 		DMA_ITConfig(DMA2_Stream2,DMA_IT_TC,DISABLE);
 		EXTI->IMR&=(~mask);
 	}
+	IMU0_CS=1;
+	IMU1_CS=1;
 }
 
 void Cimu::DMARead(SPI_TypeDef* SPIx,uint8_t* tx_buf,uint8_t* rx_buf,uint16_t lenth)
@@ -441,7 +443,6 @@ void Cimu::EnableITx(uint8_t IMUx,FunctionalState state)
 	}else{
 		WriteReg(INT_ENABLE,0x00,IMUx);
 	}
-	myprintf("INT_ENABLE:0x%X\r\n",ReadReg(INT_ENABLE,IMUx));
 }
 
 //é™€èžºä»ªä¸­æ–­å¤„ç†å‡½æ•°
@@ -449,30 +450,46 @@ void Cimu::IT_Handler(void)
 {
 	if(EXTI_GetITStatus(IMU0_IT_Linex)==SET)
 	{
-		while(IMU1_CS==0) ;
+		if(IMU1_CS==0) 
+		{
+			EXTI_ClearITPendingBit(IMU0_IT_Linex);
+			return ;
+		}
+		//while(DMA2_Stream2->CR&=DMA_SxCR_EN) ;
+		//while(DMA2_Stream3->CR&=DMA_SxCR_EN) ;
 		IMU0_CS=0;
+		DMA2_Stream2->M0AR=(uint32_t)DMA_Buf[0];
+		DMA2_Stream2->NDTR=16;
+		DMA2_Stream3->NDTR=16;
 		DMA2->LIFCR|=DMA_IT_TCIF2;							//ï¼ï¼ï¼å¿…éœ€å…ˆæ¸…é™¤æ ‡å¿—ä½ï¼Œæ‰èƒ½ä½¿èƒ½ï¼¤ï¼­ï¼¡ä¼ è¾“
 		DMA2->LIFCR|=DMA_IT_TCIF3;
+		DMA2->LIFCR|=DMA_IT_FEIF3;
 		DMA2_Stream2->CR|=DMA_SxCR_EN;
 		DMA2_Stream3->CR|=DMA_SxCR_EN;
 		EXTI_ClearITPendingBit(IMU0_IT_Linex);
+		++SampleCount[0];
+		//myprintf("IMU0\r\n");
 	}
 	
 	if(EXTI_GetITStatus(IMU1_IT_Linex)==SET)
 	{
-		while(IMU0_CS==0) ;
-		DMA_Cmd(DMA2_Stream2, DISABLE);
-		DMA_Cmd(DMA2_Stream3, DISABLE);
+		if(IMU0_CS==0) 
+		{
+			EXTI_ClearITPendingBit(IMU1_IT_Linex);
+			return ;
+		}
 		IMU1_CS=0;
 		DMA2_Stream2->NDTR=16;
 		DMA2_Stream3->NDTR=16;
-		DMA2_Stream2->CR|=DMA_MemoryInc_Enable;
-		DMA2_Stream3->CR|=DMA_MemoryInc_Enable;
-		DMA2_Stream2->M0AR=(uint32_t)DMA_Buf[0];
-		DMA2_Stream3->M0AR=(uint32_t)Tx_Buf;
+		DMA2_Stream2->M0AR=(uint32_t)DMA_Buf[1];
+		DMA2->LIFCR|=DMA_IT_TCIF2;							//ï¼ï¼ï¼å¿…éœ€å…ˆæ¸…é™¤æ ‡å¿—ä½ï¼Œæ‰èƒ½ä½¿èƒ½ï¼¤ï¼­ï¼¡ä¼ è¾“
+		DMA2->LIFCR|=DMA_IT_TCIF3;
+		DMA2->LIFCR|=DMA_IT_FEIF3;
 		DMA2_Stream2->CR|=DMA_SxCR_EN;
 		DMA2_Stream3->CR|=DMA_SxCR_EN;
 		EXTI_ClearITPendingBit(IMU1_IT_Linex);
+		++SampleCount[1];
+		//myprintf("IMU1\r\n");
 	}
 	
 	if(EXTI_GetITStatus(IMU2_IT_Linex)==SET)
@@ -536,7 +553,7 @@ void DMA2_Stream2_IRQHandler(void)
 		DMA2->LIFCR|=DMA_IT_TCIF2;
 	}
 }
-	 
+
 #ifdef __cplusplus
 }
 #endif
