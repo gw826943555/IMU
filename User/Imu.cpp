@@ -7,6 +7,9 @@
 
 uint8_t Tx_Buf[16]={ACCEL_XOUT_H|0x80,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF};
 
+volatile int16_t  MPU6050_FIFO[6][11];
+int16_t Gx_offset=0,Gy_offset=0,Gz_offset=0;
+
 void delay_ms(uint16_t nms)
 {
 	Timer delay(0,nms);
@@ -719,13 +722,193 @@ u8 mpu_dmp_init(void)
 	return 0;
 }
 
+uint8_t MPU_isRdy(void)
+{
+	if(GPIO_ReadInputDataBit(IMU0_IT_PORT,IMU0_IT_Pinx)==Bit_RESET)
+	{
+		return 1;
+	}
+	return 0;
+}
+
+/**************************实现函数********************************************
+*函数原型:		void  MPU6050_newValues(int16_t ax,int16_t ay,int16_t az,int16_t gx,int16_t gy,int16_t gz)
+*功　　能:	    将新的ADC数据更新到 FIFO数组，进行滤波处理
+*******************************************************************************/
+void  MPU_newValues(int16_t ax,int16_t ay,int16_t az,int16_t gx,int16_t gy,int16_t gz)
+{
+	unsigned char i ;
+	int32_t sum=0;
+	for(i=1;i<10;i++){	//FIFO 操作
+		MPU6050_FIFO[0][i-1]=MPU6050_FIFO[0][i];
+		MPU6050_FIFO[1][i-1]=MPU6050_FIFO[1][i];
+		MPU6050_FIFO[2][i-1]=MPU6050_FIFO[2][i];
+		MPU6050_FIFO[3][i-1]=MPU6050_FIFO[3][i];
+		MPU6050_FIFO[4][i-1]=MPU6050_FIFO[4][i];
+		MPU6050_FIFO[5][i-1]=MPU6050_FIFO[5][i];
+	}
+		MPU6050_FIFO[0][9]=ax;//将新的数据放置到 数据的最后面
+		MPU6050_FIFO[1][9]=ay;
+		MPU6050_FIFO[2][9]=az;
+		MPU6050_FIFO[3][9]=gx;
+		MPU6050_FIFO[4][9]=gy;
+		MPU6050_FIFO[5][9]=gz;
+
+	sum=0;
+	for(i=0;i<10;i++){														//求当前数组的合，再取平均值
+		 sum+=MPU6050_FIFO[0][i];
+	}
+	MPU6050_FIFO[0][10]=sum/10;
+
+	sum=0;
+	for(i=0;i<10;i++){
+		 sum+=MPU6050_FIFO[1][i];
+	}
+	MPU6050_FIFO[1][10]=sum/10;
+
+	sum=0;
+	for(i=0;i<10;i++){
+		 sum+=MPU6050_FIFO[2][i];
+	}
+	MPU6050_FIFO[2][10]=sum/10;
+
+	sum=0;
+	for(i=0;i<10;i++){
+		 sum+=MPU6050_FIFO[3][i];
+	}
+	MPU6050_FIFO[3][10]=sum/10;
+
+	sum=0;
+	for(i=0;i<10;i++){
+		 sum+=MPU6050_FIFO[4][i];
+	}
+	MPU6050_FIFO[4][10]=sum/10;
+
+	sum=0;
+	for(i=0;i<10;i++){
+		 sum+=MPU6050_FIFO[5][i];
+	}
+	MPU6050_FIFO[5][10]=sum/10;
+}
+
+/**************************ÊµÏÖº¯Êý********************************************
+*函数原型:		void MPU6050_getMotion6(int16_t* ax, int16_t* ay, int16_t* az, int16_t* gx, int16_t* gy, int16_t* gz) {
+*功    能:	  读取MPU当前测量值
+*******************************************************************************/
+void MPU_getMotion6(int16_t* ax, int16_t* ay, int16_t* az, int16_t* gx, int16_t* gy, int16_t* gz) 
+{
+	if(MPU_isRdy())
+	{
+		int16_t accel[3],gyro[3];
+		MPU_GetAccel(0,accel,0);
+		MPU_GetGyro(0,gyro,0);
+		MPU_newValues(accel[0],accel[1],accel[2],gyro[0],gyro[1],gyro[2]);
+		*ax  =MPU6050_FIFO[0][10];
+		*ay  =MPU6050_FIFO[1][10];
+		*az = MPU6050_FIFO[2][10];
+		*gx  =MPU6050_FIFO[3][10]-Gx_offset;
+		*gy = MPU6050_FIFO[4][10]-Gy_offset;
+		*gz = MPU6050_FIFO[5][10]-Gz_offset;
+	} else {
+		*ax = MPU6050_FIFO[0][10];//=MPU6050_FIFO[0][10];
+		*ay = MPU6050_FIFO[1][10];//=MPU6050_FIFO[1][10];
+		*az = MPU6050_FIFO[2][10];//=MPU6050_FIFO[2][10];
+		*gx = MPU6050_FIFO[3][10]-Gx_offset;//=MPU6050_FIFO[3][10];
+		*gy = MPU6050_FIFO[4][10]-Gy_offset;//=MPU6050_FIFO[4][10];
+		*gz = MPU6050_FIFO[5][10]-Gz_offset;//=MPU6050_FIFO[5][10];
+	}
+}
+
+void MPU_getlastMotion6(int16_t* ax, int16_t* ay, 
+		int16_t* az, int16_t* gx, int16_t* gy, int16_t* gz)
+{
+	*ax  =MPU6050_FIFO[0][10];
+	*ay  =MPU6050_FIFO[1][10];
+	*az = MPU6050_FIFO[2][10];
+	*gx  =MPU6050_FIFO[3][10]-Gx_offset;
+	*gy = MPU6050_FIFO[4][10]-Gy_offset;
+	*gz = MPU6050_FIFO[5][10]-Gz_offset;
+}
+
+/**************************实现函数********************************************
+*函数原型:		void MPU6050_InitGyro_Offset(void)
+*功　　能:	    读取 MPU6050的陀螺仪偏置
+此时模块应该被静止放置。以测试静止时的陀螺仪输出
+*******************************************************************************/
+void MPU6050_InitGyro_Offset(void)
+{
+	unsigned char i;
+	int16_t temp[6];
+	int32_t	tempgx=0,tempgy=0,tempgz=0;
+	int32_t	tempax=0,tempay=0,tempaz=0;
+	Gx_offset=0;
+	Gy_offset=0;
+	Gz_offset=0;
+	for(i=0;i<50;i++){
+  		delay_ms(1);
+  		MPU_getMotion6(&temp[0],&temp[1],&temp[2],&temp[3],&temp[4],&temp[5]);
+	}
+ 	for(i=0;i<100;i++){
+		delay_ms(1);
+		MPU_getMotion6(&temp[0],&temp[1],&temp[2],&temp[3],&temp[4],&temp[5]);
+		tempax+= temp[0];
+		tempay+= temp[1];
+		tempaz+= temp[2];
+		tempgx+= temp[3];
+		tempgy+= temp[4];
+		tempgz+= temp[5];
+	}
+	Gx_offset=tempgx/100;//MPU6050_FIFO[3][10];
+	Gy_offset=tempgy/100;//MPU6050_FIFO[4][10];
+	Gz_offset=tempgz/100;//MPU6050_FIFO[5][10];
+}
+
 int MPU_NormalInit(void)
 {
-	mpu_init(0);
-	mpu_set_sensors(INV_XYZ_GYRO|INV_XYZ_ACCEL);
-	mpu_set_sample_rate(1000);
-	return mpu_run_self_test(0,0);
+	for(uint8_t i=0;i<6;++i)
+	{
+		hw.addr = i;
+		mpu_init(0);
+		mpu_set_sensors(INV_XYZ_GYRO|INV_XYZ_ACCEL);
+	//		mpu_set_sample_rate(1000);
+		mpu_run_6500_self_test(0,0,1);
+	}
+	for(uint8_t i=0;i<10;i++)
+	{//
+		delay_ms(1);
+		MPU_getMotion6(0,0,0,0,0,0);
+	}
+	MPU6050_InitGyro_Offset();
+	return 0;
 }
+
+/**
+ *  @brief      Read raw accel data directly from the registers.
+ *  @param[in] 	IMUx				Sensor to be read,where x ranges from 0 to 5.
+ *  @param[out] data        Raw data in hardware units.
+ *  @param[out] timestamp   Timestamp in milliseconds. Null if not needed.
+ *  @return     0 if successful.
+ */
+int MPU_GetAccel(uint8_t IMUx,short *data, unsigned long *timestamp)
+{
+	hw.addr = IMUx;
+	return mpu_get_accel_reg(data,timestamp);
+}
+
+/**
+ *  @brief      Read raw gyro data directly from the registers.
+ *  @param[in] 	IMUx				Sensor to be read,where x ranges from 0 to 5.
+ *  @param[out] data        Raw data in hardware units.
+ *  @param[out] timestamp   Timestamp in milliseconds. Null if not needed.
+ *  @return     0 if successful.
+ */
+int MPU_GetGyro(uint8_t IMUx,short *data, unsigned long *timestamp)
+{
+	hw.addr = IMUx;
+	return mpu_get_gyro_reg(data,timestamp);
+}
+
+
 //得到dmp处理后的数据(注意,本函数需要比较多堆栈,局部变量有点多)
 //pitch:俯仰角 精度:0.1°   范围:-90.0° <---> +90.0°
 //roll:横滚角  精度:0.1°   范围:-180.0°<---> +180.0°
@@ -757,9 +940,9 @@ u8 mpu_dmp_get_data(float *pitch,float *roll,float *yaw)
 		q2 = quat[2] / q30;
 		q3 = quat[3] / q30; 
 		//计算得到俯仰角/横滚角/航向角
-		*pitch = arm_sin_f32(-2 * q1 * q3 + 2 * q0* q2)* 57.3;	// pitch
-		*roll  = atan2(2 * q2 * q3 + 2 * q0 * q1, -2 * q1 * q1 - 2 * q2* q2 + 1)* 57.3;	// roll
-		*yaw   = atan2(2*(q1*q2 + q0*q3),q0*q0+q1*q1-q2*q2-q3*q3) * 57.3;	//yaw
+		*pitch = arm_sin_f32(-2 * q1 * q3 + 2 * q0* q2)* 57.3f;	// pitch
+		*roll  = atan2(2 * q2 * q3 + 2 * q0 * q1, -2 * q1 * q1 - 2 * q2* q2 + 1)* 57.3f;	// roll
+		*yaw   = atan2(2*(q1*q2 + q0*q3),q0*q0+q1*q1-q2*q2-q3*q3) * 57.3f;	//yaw
 	}else return 2;
 	return 0;
 }

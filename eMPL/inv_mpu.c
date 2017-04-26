@@ -212,18 +212,18 @@ struct gyro_reg_s {
 #endif
 };
 
-/* Information specific to a particular device. */
-struct hw_s {
-    unsigned char addr;
-    unsigned short max_fifo;
-    unsigned char num_reg;
-    unsigned short temp_sens;
-    short temp_offset;
-    unsigned short bank_size;
-#if defined AK89xx_SECONDARY
-    unsigned short compass_fsr;
-#endif
-};
+///* Information specific to a particular device. */
+//struct hw_s {
+//    unsigned char addr;
+//    unsigned short max_fifo;
+//    unsigned char num_reg;
+//    unsigned short temp_sens;
+//    short temp_offset;
+//    unsigned short bank_size;
+//#if defined AK89xx_SECONDARY
+//    unsigned short compass_fsr;
+//#endif
+//};
 
 /* When entering motion interrupt mode, the driver keeps track of the
  * previous state so that it can be restored at a later time.
@@ -583,7 +583,7 @@ const struct gyro_reg_s reg = {
 #endif
 };
 
-const struct hw_s hw = {
+struct hw_s hw = {
     5,
     1024,
     128,
@@ -764,13 +764,13 @@ int mpu_init(struct int_param_s *int_param)
     st.chip_cfg.dmp_loaded = 0;
     st.chip_cfg.dmp_sample_rate = 0;
 
-    if (mpu_set_gyro_fsr(2000))
+    if (mpu_set_gyro_fsr(1000))
         return -1;
     if (mpu_set_accel_fsr(2))
         return -1;
     if (mpu_set_lpf(42))
         return -1;
-    if (mpu_set_sample_rate(50))
+    if (mpu_set_sample_rate(1000))
         return -1;
     if (mpu_configure_fifo(0))
         return -1;
@@ -2621,14 +2621,14 @@ int mpu_run_6500_self_test(long *gyro, long *accel, unsigned char debug)
          * We'll just report an error for all three sensors.
          */
         if(debug)
-        	log_i("Retrieving Biases Error - possible I2C error\n");
+        	log_i("Retrieving Biases Error - possible I2C error\r\n");
 
         result = 0;
         goto restore;
     }
 
     if(debug)
-    	log_i("Retrieving ST Biases\n");
+    	log_i("Retrieving ST Biases\r\n");
 
     for (ii = 0; ii < tries; ii++)
         if (!get_st_6500_biases(gyro_st, accel_st, 1, debug))
@@ -2636,7 +2636,7 @@ int mpu_run_6500_self_test(long *gyro, long *accel, unsigned char debug)
     if (ii == tries) {
 
         if(debug)
-        	log_i("Retrieving ST Biases Error - possible I2C error\n");
+        	log_i("Retrieving ST Biases Error - possible I2C error\r\n");
 
         /* Again, probably an I2C error. */
         result = 0;
@@ -2645,11 +2645,11 @@ int mpu_run_6500_self_test(long *gyro, long *accel, unsigned char debug)
 
     accel_result = accel_6500_self_test(accel, accel_st, debug);
     if(debug)
-    	log_i("Accel Self Test Results: %d\n", accel_result);
+    	log_i("Accel Self Test Results: %d\r\n", accel_result);
 
     gyro_result = gyro_6500_self_test(gyro, gyro_st, debug);
     if(debug)
-    	log_i("Gyro Self Test Results: %d\n", gyro_result);
+    	log_i("Gyro Self Test Results: %d\r\n", gyro_result);
 
     result = 0;
     if (!gyro_result)
@@ -2660,7 +2660,7 @@ int mpu_run_6500_self_test(long *gyro, long *accel, unsigned char debug)
 #ifdef AK89xx_SECONDARY
     compass_result = compass_self_test();
     if(debug)
-    	log_i("Compass Self Test Results: %d\n", compass_result);
+    	log_i("Compass Self Test Results: %d\r\n", compass_result);
     if (!compass_result)
         result |= 0x04;
 #else
@@ -2668,7 +2668,7 @@ int mpu_run_6500_self_test(long *gyro, long *accel, unsigned char debug)
 #endif
 restore:
 	if(debug)
-		log_i("Exiting HWST\n");
+		log_i("Exiting HWST\r\n");
 	/* Set to invalid values to ensure no I2C writes are skipped. */
 	st.chip_cfg.gyro_fsr = 0xFF;
 	st.chip_cfg.accel_fsr = 0xFF;

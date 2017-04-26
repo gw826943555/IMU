@@ -46,7 +46,21 @@ struct int_param_s {
 #endif
 };
 
+/* Information specific to a particular device. */
+struct hw_s {
+    unsigned char addr;
+    unsigned short max_fifo;
+    unsigned char num_reg;
+    unsigned short temp_sens;
+    short temp_offset;
+    unsigned short bank_size;
+#if defined AK89xx_SECONDARY
+    unsigned short compass_fsr;
+#endif
+};
+
 extern struct gyro_state_s st;
+extern struct hw_s hw;
 
 #define MPU_INT_STATUS_DATA_READY       (0x0001)
 #define MPU_INT_STATUS_DMP              (0x0002)

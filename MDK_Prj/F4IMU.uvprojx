@@ -208,7 +208,7 @@
             <Ra2Chk>0</Ra2Chk>
             <Ra3Chk>0</Ra3Chk>
             <Im1Chk>1</Im1Chk>
-            <Im2Chk>0</Im2Chk>
+            <Im2Chk>1</Im2Chk>
             <OnChipMemories>
               <Ocm1>
                 <Type>0</Type>
@@ -333,7 +333,7 @@
             <v6Rtti>0</v6Rtti>
             <VariousControls>
               <MiscControls>--cpp --cpp11</MiscControls>
-              <Define>STM32F40_41xxx,USE_STDPERIPH_DRIVER,STM32F407xx,EMPL_TARGET_STM32F4,MPU6500,ARM_MATH_CM4</Define>
+              <Define>STM32F40_41xxx,USE_STDPERIPH_DRIVER,STM32F407xx,EMPL_TARGET_STM32F4,MPU6500,ARM_MATH_CM4,  __CC_ARM</Define>
               <Undefine></Undefine>
               <IncludePath>..\STM32F4xx_StdPeriph_Driver\inc;..\User;..\CMSIS\Include;..\CMSIS\Inc;..\eMPL;..\eMPL\include</IncludePath>
             </VariousControls>
@@ -408,6 +408,16 @@
               <FileName>printf_.cpp</FileName>
               <FileType>8</FileType>
               <FilePath>..\User\printf_.cpp</FilePath>
+            </File>
+            <File>
+              <FileName>AHRS.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\User\AHRS.c</FilePath>
+            </File>
+            <File>
+              <FileName>Matrix.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\User\Matrix.c</FilePath>
             </File>
           </Files>
         </Group>

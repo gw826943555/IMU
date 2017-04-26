@@ -258,7 +258,12 @@ unsigned short inv_orientation_matrix_to_scalar(const signed char *mtx);
 unsigned short inv_row_2_scale(const signed char *row);
 u8 mpu_dmp_init(void);
 u8 mpu_dmp_get_data(float *pitch,float *roll,float *yaw);
+
 int MPU_NormalInit(void);
+int MPU_GetAccel(uint8_t IMUx,short *data, unsigned long *timestamp);
+int MPU_GetGyro(uint8_t IMUx,short *data, unsigned long *timestamp);
+void MPU_getMotion6(int16_t* ax, int16_t* ay, 
+		int16_t* az, int16_t* gx, int16_t* gy, int16_t* gz);
 
 typedef NormalSingleton<Cimu> Imu;							
 #endif
