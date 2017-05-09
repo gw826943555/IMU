@@ -2,6 +2,8 @@
 #include "arm_math.h"
 #include "matrix.h"
 
+#define DSP2RAD 1.088412E-03//16.4f
+
 volatile float exInt,eyInt,ezInt;							//误差积分
 volatile float q0,q1,q2,q3,w1,w2,w3;					//全局四元数
 volatile float integralFBhand,handdiff;
@@ -154,6 +156,150 @@ void IMU_getValues(float * values) {
 	}
 }
 
+float correction_gz(float t, float gz)
+{
+	static float _Gz = 0;
+	static float _Last_gz = 0;
+	static long _Gz_Count = 0;
+	static float _Duration_t = 0;
+	static float _Mean_Gz = 0;
+	static float _Threshold = 2*DSP2RAD;
+	static float _Gz_large = 0;
+	static int16_t stable = 0;
+	static long _Gz_Count_large = 0;
+	static float _Duration_t_large = 0;
+	static float _Mean_Gz_large = 0;
+	static float _Threshold_large = 200*DSP2RAD;
+	float ez = 0;
+	int16_t dift_gz_offset = 0;
+	if (fabs(gz-_Last_gz) <= _Threshold) {
+		_Gz += gz;
+		_Gz_Count ++;
+		_Mean_Gz = _Gz/_Gz_Count;
+		_Duration_t += t;
+	}
+	else {
+		stable = 0;
+		_Gz = 0;
+		_Gz_Count = 0;
+		_Mean_Gz = 0;
+		_Duration_t = 0;
+	}
+/*
+	if (0&&(fabs(gz-_Last_gz) <= _Threshold_large) && _Duration_t <0.5 ) { //此0.5与后面开始修改gz的0.5相匹配
+		_Gz_large += gz;
+		_Gz_Count_large ++;
+		_Mean_Gz_large = _Gz_large/_Gz_Count_large;
+		_Duration_t_large += t;
+	}
+	else {
+		stable = 0;
+		_Gz_large = 0;
+		_Gz_Count_large = 0;
+		_Mean_Gz_large = 0;
+		_Duration_t_large = 0;
+		_Threshold_large = 200*DSP2RAD;		
+	}
+*/
+	_Last_gz = gz;
+	if(stable == 1) {
+		ez = -0.5*gz;
+	}
+	if( _Duration_t >= 1 && fabs(gz-_Mean_Gz) <= _Threshold) { // to see if it is stable 8s
+		dift_gz_offset = (_Mean_Gz)/DSP2RAD;
+		if ( fabs((float)dift_gz_offset) >= 20) {   //如果offset 比较大时，快速收敛
+			if ( _Duration_t > 20) {
+				Gz_offset += (int16_t) (dift_gz_offset); // update Gz_offset, modify _Last_gz
+				_Last_gz -= dift_gz_offset*DSP2RAD;
+				_Mean_Gz = 0;
+				_Gz = 0;
+				_Gz_Count = 0;
+				_Duration_t = 0;
+				stable = 1;
+			}
+			else {
+				return ez;
+			}
+		}
+		else if ( fabs((float)dift_gz_offset) >= 10){
+			if ( _Duration_t > 10) {
+				Gz_offset += (int16_t) (dift_gz_offset); // update Gz_offset, modify _Last_gz
+				_Last_gz -= dift_gz_offset*DSP2RAD;
+				_Mean_Gz = 0;
+				_Gz = 0;
+				_Gz_Count = 0;
+				_Duration_t = 0;
+				stable = 1;
+			}
+			else {
+				return ez;
+			}			
+		}		
+		else if ( fabs((float)dift_gz_offset) >= 5){
+			if ( _Duration_t > 5) {
+				Gz_offset += (int16_t) (dift_gz_offset); // update Gz_offset, modify _Last_gz
+				_Last_gz -= dift_gz_offset*DSP2RAD;
+				_Mean_Gz = 0;
+				_Gz = 0;
+				_Gz_Count = 0;
+				_Duration_t = 0;
+				stable = 1;
+			}
+			else {
+				return ez;
+			}			
+		}			
+		else if ( fabs((float)dift_gz_offset) >= 1){
+			Gz_offset += (int16_t) (dift_gz_offset);
+			_Last_gz -= dift_gz_offset*DSP2RAD; // update Gz_offset, modify _Last_gz
+			_Mean_Gz = 0;
+			_Gz = 0;
+			_Gz_Count = 0;
+			_Duration_t = 0;	
+			stable = 1;
+		}
+		else if ( fabs((float)dift_gz_offset) > 0){
+			Gz_offset += (int16_t) (dift_gz_offset / fabs((float)dift_gz_offset));
+			_Last_gz -= DSP2RAD*(dift_gz_offset / fabs((float)dift_gz_offset)); // update Gz_offset, modify _Last_gz				
+			_Mean_Gz = 0;
+			_Gz = 0;
+			_Gz_Count = 0;
+			_Duration_t = 0;	
+			stable = 1;			
+		}		
+		else if (dift_gz_offset == 0) {
+			_Mean_Gz = 0;
+			_Gz = 0;
+			_Gz_Count = 0;
+			_Duration_t = 0;
+			stable = 1;
+		} 
+	}
+	/*
+	if( 0 && _Duration_t_large >= 1 && _Duration_t_large < 10) {  // to correction short time shift 此0.5与前面的0.5相匹配
+		ez = -0.02*gz;
+	}
+	if( 0 && _Duration_t_large >= 10) { // to see if it is stable 10s
+		if ( fabs(_Mean_Gz_large/DSP2RAD) > 0.4){
+			Gz_offset += (int16_t) (_Mean_Gz_large / fabs(_Mean_Gz_large));
+			_Last_gz -= DSP2RAD*(_Mean_Gz_large / fabs(_Mean_Gz_large)); // update Gz_offset, modify _Last_gz
+			_Mean_Gz_large = 0;
+			_Gz_large = 0;
+			_Gz_Count_large = 0;
+			_Duration_t_large = 0;		
+		}
+		else if (dift_gz_offset == 0) {
+			_Mean_Gz_large = 0;
+			_Gz_large = 0;
+			_Gz_Count_large = 0;
+			_Duration_t_large = 0;
+		}
+		ez = - 0.1*gz;
+	} 
+	*/
+	return ez;
+}
+
 /**************************实现函数********************************************
 *函数原型:	   void IMU_AHRSupdate
 *功　　能:	 更新AHRS 更新四元数 
@@ -289,6 +435,101 @@ void AHRS_AHRSupdate(float gx, float gy, float gz, float ax, float ay, float az,
 	q1 = q1 * norm;
 	q2 = q2 * norm;
 	q3 = q3 * norm;
+}
+
+/**************************实现函数********************************************
+*函数原型:	   void IMU_AHRSupdate_no_m
+*功　　能:	 更新AHRS 更新四元数, no magnetic
+输入参数： 当前的测量值。
+输出参数：没有
+*******************************************************************************/
+#define Kp 2.0f   // proportional gain governs rate of convergence to accelerometer/magnetometer
+#define Ki 0.01f   // integral gain governs rate of convergence of gyroscope biases
+
+void IMU_AHRSupdate_no_m(float gx, float gy, float gz, float ax, float ay, float az) {
+  float norm;
+  float hx, hy, hz, bx, bz;
+  float vx, vy, vz, wx, wy, wz;
+  float ex, ey, ez,halfT;
+  float tempq0,tempq1,tempq2,tempq3;
+//	float yaw_angles; //yaw_angle
+// 先把这些用得到的值算好
+  float q0q0 = q0*q0;
+  float q0q1 = q0*q1;
+  float q0q2 = q0*q2;
+  float q0q3 = q0*q3;
+  float q1q1 = q1*q1;
+  float q1q2 = q1*q2;
+  float q1q3 = q1*q3;
+  float q2q2 = q2*q2;   
+  float q2q3 = q2*q3;
+  float q3q3 = q3*q3;          
+  
+  now = micros();  //读取时间
+  if(now<lastUpdate){ //定时器溢出过了。
+		halfT =  ((float)(now + (0xffff- lastUpdate)) / 2000000.0f);
+  }
+  else	{
+		halfT =  ((float)(now - lastUpdate) / 2000000.0f);
+  }
+  lastUpdate = now;	//更新时间
+  norm = invSqrt(ax*ax + ay*ay + az*az);       
+  ax = ax * norm;
+  ay = ay * norm;
+  az = az * norm;
+  //把加计的三维向量转成单位向量。
+  /*
+  这是把四元数换算成《方向余弦矩阵》中的第三列的三个元素。
+  根据余弦矩阵和欧拉角的定义，地理坐标系的重力向量，转到机体坐标系，正好是这三个元素。
+  所以这里的vx\y\z，其实就是当前的欧拉角（即四元数）的机体坐标参照系上，换算出来的重力单位向量。
+  */
+  vx = 2*(q1q3 - q0q2);
+  vy = 2*(q0q1 + q2q3);
+  vz = q0q0 - q1q1 - q2q2 + q3q3;
+
+  
+  //现在把加速度的测量矢量和参考矢量做叉积，把磁场的测量矢量和参考矢量也做叉积。都拿来来修正陀螺。
+  ex = (ay*vz - az*vy) ;
+  ey = (az*vx - ax*vz) ;
+	//ez = 0*correction_yaw(0,GET_EZ,0);
+  //ez = (ax*vy - ay*vx) ;
+	//ez = 0;
+	ez = correction_gz(halfT*2.0,gz); //gz : rad/s; halfT :time s
+  /*
+  axyz是机体坐标参照系上，加速度计测出来的重力向量，也就是实际测出来的重力向量。
+  axyz是测量得到的重力向量，vxyz是陀螺积分后的姿态来推算出的重力向量，它们都是机体坐标参照系上的重力向量。
+  那它们之间的误差向量，就是陀螺积分后的姿态和加计测出来的姿态之间的误差。
+  向量间的误差，可以用向量叉积（也叫向量外积、叉乘）来表示，exyz就是两个重力向量的叉积。
+  这个叉积向量仍旧是位于机体坐标系上的，而陀螺积分误差也是在机体坐标系，而且叉积的大小与陀螺积分误差成正比，正好拿来纠正陀螺。（你可以自己拿东西想象一下）由于陀螺是对机体直接积分，所以对陀螺的纠正量会直接体现在对机体坐标系的纠正。
+  */
+if(ex != 0.0f && ey != 0.0f /*&& ez != 0.0f*/){
+  exInt = exInt + ex * Ki * halfT;
+  eyInt = eyInt + ey * Ki * halfT;	
+  //ezInt = ezInt + ez * Ki * halfT;
+
+  // 用叉积误差来做PI修正陀螺零偏
+  gx = gx + Kp*ex + exInt;
+  gy = gy + Kp*ey + eyInt;
+  //gz = gz + Kp*ez + ezInt;
+	gz = gz + Kp * ez;
+
+  }
+
+  // 四元数微分方程
+  tempq0 = q0 + (-q1*gx - q2*gy - q3*gz)*halfT;
+  tempq1 = q1 + (q0*gx + q2*gz - q3*gy)*halfT;
+  tempq2 = q2 + (q0*gy - q1*gz + q3*gx)*halfT;
+  tempq3 = q3 + (q0*gz + q1*gy - q2*gx)*halfT;  
+  
+  // 四元数规范化
+  norm = invSqrt(tempq0*tempq0 + tempq1*tempq1 + tempq2*tempq2 + tempq3*tempq3);
+  q0 = tempq0 * norm;
+  q1 = tempq1 * norm;
+  q2 = tempq2 * norm;
+  q3 = tempq3 * norm;
+
+//	yaw_angles = -atan2(2 * q1 * q2 + 2 * q0 * q3, -2 * q2*q2 - 2 * q3 * q3 + 1)* 180/M_PI; //yaw degree
+	//correction_yaw(yaw_angles,halfT*2.0,gz); //gz : rad/s; yaw_angle: degree, halfT :time
 }
 
 /**************************实现函数********************************************
