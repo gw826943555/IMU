@@ -870,8 +870,8 @@ int MPU_NormalInit(void)
 		hw.addr = i;
 		mpu_init(0);
 		mpu_set_sensors(INV_XYZ_GYRO|INV_XYZ_ACCEL);
-	//		mpu_set_sample_rate(1000);
-		mpu_run_6500_self_test(0,0,1);
+		mpu_set_sample_rate(1000);
+		mpu_run_self_test(0,0);
 	}
 	for(uint8_t i=0;i<10;i++)
 	{//

@@ -42,7 +42,7 @@ int myprintf( const char* format, ...)
 {
 	va_list args;
 	int n;
-	char BUF[100];
+	char BUF[256];
 	
 	//TODO lock vsnprintf mutex
 	va_start(args, format);

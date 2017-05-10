@@ -509,7 +509,6 @@ int dmp_load_motion_driver_firmware(void)
 {
 	int res=mpu_load_firmware(DMP_CODE_SIZE, dmp_memory, sStartAddress,
         DMP_SAMPLE_RATE);
-	myprintf("load dmp:%d\r\n",res);
     return res;
 }
 

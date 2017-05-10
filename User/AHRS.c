@@ -1,69 +1,31 @@
 #include "AHRS.h"
 #include "arm_math.h"
 #include "matrix.h"
+#include "printf_.h"
 
+volatile float exInt, eyInt, ezInt;  // 误差积分
+volatile float q0, q1, q2, q3; // 全局四元数
+volatile float integralFBhand,handdiff;
+volatile uint32_t lastUpdate, now; // 采样周期计数 单位 us
+extern int16_t Gz_offset;
+#define HISTORY_YAW_SIZE 10   //yaw length, short time update
+#define _HISTORY_ERROR_TIME 20 //long time update 
+#define GET_EZ -100 //get ez
+#define LSB 16.03556f //32.8f
 #define DSP2RAD 1.088412E-03//16.4f
 
-volatile float exInt,eyInt,ezInt;							//误差积分
-volatile float q0,q1,q2,q3,w1,w2,w3;					//全局四元数
-volatile float integralFBhand,handdiff;
-volatile uint32_t lastUpdate,now;							//采样周期计算
-float f;
-volatile float Ya_offset=0,P_offset=0,R_offset=0;
-float P[49]={	0.0001,0,0,0,0,0,0,
-				0,0.0001,0,0,0,0,0,
-				0,0,0.0001,0,0,0,0,
-				0,0,0,0.0001,0,0,0,
-				0,0,0,0,0.0002,0,0,
-				0,0,0,0,0,0.0002,0,
-				0,0,0,0,0,0,0.0002};
+static float Gz_Buf_132E[400];
+static float Gz_Last_CEC;
+static float sum_Gz_CE4;
+static int16_t offset_Cnt_210 = 0;
+static float _Threshold = 1*DSP2RAD;
+static int16_t ram_234;
 
-float Q[49]={	0.0001,0,0,0,0,0,0,
-				0,0.0001,0,0,0,0,0,
-				0,0,0.0001,0,0,0,0,
-				0,0,0,0.0001,0,0,0,
-				0,0,0,0,0.0005,0,0,		 
-				0,0,0,0,0,0.0005,0,	 
-				0,0,0,0,0,0,0.0005} ;
-
-float R[36]={	0.0003,0,0,0,0,0,
-				0,0.0003,0,0,0,0,
-				0,0,0.0003,0,0,0,
-				0,0,0,0.0002,0,0,
-				0,0,0,0,0.0002,0,
-				0,0,0,0,0,0.0002} ;	
-
-float A[49],B[49],E[42],F1[36],X[49],Z[49],Ht[42],Ft[49],K[42],O[49],T[6],F[49],Y[7],P1[49],U1[36],U1t[36],D1[36],X1[36],X2[36];
-
-float H[42]={	0,0,0,0,0,0,0,
-				0,0,0,0,0,0,0,
-				0,0,0,0,0,0,0,
-				0,0,0,0,0,0,0,
-				0,0,0,0,0,0,0,													   												  
-				0,0,0,0,0,0,0,};
-float I[49]={	1,0,0,0,0,0,0,
-				0,1,0,0,0,0,0,
-				0,0,1,0,0,0,0,
-				0,0,0,1,0,0,0,
-				0,0,0,0,1,0,0,
-				0,0,0,0,0,1,0,
-				0,0,0,0,0,0,1};
-
-// Fast inverse square-root
-/**************************实现函数********************************************
-*函数原型:	   float invSqrt(float x)
-*功　　能:	   快速计算 1/Sqrt(x) 	
-输入参数： 要计算的值
-输出参数： 结果
-*******************************************************************************/
-float invSqrt(float x) {
-	float halfx = 0.5f * x;
-	float y = x;
-	long i = *(long*)&y;
-	i = 0x5f3759df - (i>>1);
-	y = *(float*)&i;
-	y = y * (1.5f - (halfx * y * y));
-	return y;
+void getetint(int16_t* x, int16_t* y, int16_t* z)
+{
+	*x = (int16_t)(exInt*1000.0);
+	*y = (int16_t)(eyInt*1000.0);
+	*z = (int16_t)(ezInt*1000.0);
 }
 
 /**************************实现函数********************************************
@@ -101,6 +63,23 @@ uint32_t micros(void)
  	return TIM2->CNT;
 }
 
+// Fast inverse square-root
+/**************************实现函数********************************************
+*函数原型:	   float invSqrt(float x)
+*功　　能:	   快速计算 1/Sqrt(x) 	
+输入参数： 要计算的值
+输出参数： 结果
+*******************************************************************************/
+float invSqrt(float x) {
+	float halfx = 0.5f * x;
+	float y = x;
+	long i = *(long*)&y;
+	i = 0x5f3759df - (i>>1);
+	y = *(float*)&i;
+	y = y * (1.5f - (halfx * y * y));
+	return y;
+}
+
 /**************************实现函数********************************************
 *函数原型:	   void AHRS_init(void)
 *功　　能:	  初始化IMU相关	
@@ -120,9 +99,9 @@ void AHRS_init(void)
 	//	MPU6050_initialize();
 
 	//陀螺仪偏差
-	w1=0;//0.095f;
-	w2=0;//0.078f;
-	w3=0;//-0.014f;
+	exInt = 0.0;
+	eyInt = 0.0;
+	ezInt = 0.0;
 
 	lastUpdate = micros();//更新时间
 	now = micros();
@@ -139,7 +118,6 @@ void AHRS_init(void)
 输入参数： 将结果存放的数组首地址
 输出参数：没有
 *******************************************************************************/
-
 void IMU_getValues(float * values) {  
 	int16_t accgyroval[6];
 	int i;
@@ -150,9 +128,158 @@ void IMU_getValues(float * values) {
         values[i] = (float) accgyroval[i];
       }
       else {
-		values[i] = ((float) accgyroval[i]) / 32.8f; //转成度每秒
-		//这里已经将量程改成了 1000度每秒  32.8 对应 1度每秒
+				if ( accgyroval[i] <3 && accgyroval[i]> -3 ) {
+					values[i] = 0;
+				} else {
+					values[i] = ((float) accgyroval[i]) / LSB; //转成度每秒
+				}
+		//这里已经将量程改成了 360度每秒  LSB 对应 1度每秒
+      }
+   }
+}
+
+void least_square(float* x, float* y,float* a, float* b, float* error){
+	int length = HISTORY_YAW_SIZE;
+	int i = 0;
+	float t1, t2, t3, t4;
+	float xbar, ybar;
+	float s1, s2, s3;
+	float r = 0;
+	t1 = 0;
+	t2 = 0;
+	t3 = 0;
+	t4 = 0;
+	s1 = 0;
+	s2 = 0;
+	s3 = 0;
+	xbar = 0;
+	ybar = 0;
+	for( i = 0; i < length; i++) {
+		t1 += x[i]*x[i];
+		t2 += x[i];
+		t3 += x[i]*y[i];
+		t4 += y[i];
+	}
+	if(fabs(length*t1 - t2*t2) > 1e-10) {
+		*b = (t1*t4-t2*t3)/(length*t1-t2*t2);
+		*a = (length*t3 - t2 * t4)/(length*t1-t2*t2);
+	}
+	else{
+		*a = 1;
+		*b = 0;
+		*error = 0;
+		return;
+	}
+	xbar = t2/length;
+	ybar = t4/length;
+	
+	for( i = 0; i < length; i++) {
+		s1 += (x[i]-xbar)*(y[i]-ybar);
+		s2 += (x[i]-xbar)*(x[i]-xbar);
+		s3 += (y[i]-ybar)*(y[i]-ybar);
+	}
+	r = s1/(sqrt(s2)*sqrt(s3));
+	*error = r * r;
+}
+
+float correction_yaw(float tmp_yaw, float t, float gz) {
+	static float _History_yaw[HISTORY_YAW_SIZE];
+	static float _Hisotry_t[HISTORY_YAW_SIZE];
+	static int _History_init_count = HISTORY_YAW_SIZE-1;
+	static int _History_error_count = 0;
+	static float _Ez = 0;
+	float a,b,error;
+	float tmpt =0;
+	int i = 0;
+
+	if (t == GET_EZ){  // get correction ez
+		return _Ez;
+	}
+	else{
+		_Ez = 0;
+		//gz = gz * 180.0 / M_PI * LSB;
+		if( _History_init_count >= 0) {  
+			_History_yaw[HISTORY_YAW_SIZE-1-_History_init_count] = tmp_yaw; // store tmp_yaw
+			if (_History_init_count == (HISTORY_YAW_SIZE-1)){
+				_Hisotry_t[HISTORY_YAW_SIZE-1-_History_init_count] = t; // store tmp_t
+			}
+			else{
+				_Hisotry_t[HISTORY_YAW_SIZE-1-_History_init_count] = _Hisotry_t[HISTORY_YAW_SIZE-1-_History_init_count-1]+t; //new t
+			}
+			_History_init_count --;
+			return _Ez;
+		}		
+		else {
+			tmpt = _Hisotry_t[0]; // update yaw and t
+			for( i = 0; i< HISTORY_YAW_SIZE-1; i++){
+				_History_yaw[i] = _History_yaw[i+1];
+				_Hisotry_t[i] = _Hisotry_t[i+1] - tmpt;
+			}
+			_History_yaw[HISTORY_YAW_SIZE-1] = tmp_yaw;
+			_Hisotry_t[HISTORY_YAW_SIZE-1] = _Hisotry_t[HISTORY_YAW_SIZE-2] + t;
+		
+			least_square(_Hisotry_t, _History_yaw, &a, &b, &error); // get a,b,error; a is the gz speed
+			if ( error > 0.98 && fabs(a) > 0.001 && fabs(a) < 0.01 ) {  //only shift can increase
+				_History_error_count ++ ;
+				
+				if (_History_error_count > _HISTORY_ERROR_TIME)
+				{
+					_Ez = -a*M_PI/180.0; //a rotation
+					if(fabs(a)>1e-10 )
+					{
+						Gz_offset += (int16_t) (gz / fabs(gz));
+					}
+					else
+					{
+						Gz_offset += 0;
+					}
+					_History_error_count = 0; //renew
+					_History_init_count = HISTORY_YAW_SIZE-1;
+				}
+			}
+			else { // have continue line
+				_History_error_count = 0;
+				_History_init_count = HISTORY_YAW_SIZE-1;
+			}
+			return _Ez;
 		}
+	}
+}
+
+void correct_drift()
+{
+	int32_t i;
+	float sum2;
+	float gzVal;
+	float dift_gz_offset = 0;
+	float max_gz = 0;
+	float std_gz = 0;
+  sum2 = 0;
+  for ( i = 1; i < 400; ++i )
+  {
+		if( fabs(Gz_Buf_132E[i]) > max_gz) {
+			 max_gz = fabs(Gz_Buf_132E[i]);
+		}
+    sum2 += Gz_Buf_132E[i];
+  }	
+	gzVal = sum2 / 399.0f;
+	for ( i = 1; i < 400; ++i ) {
+		std_gz += (gzVal - Gz_Buf_132E[i]) * (gzVal - Gz_Buf_132E[i]);
+	}
+	std_gz = sqrt(std_gz/399.0f);
+  if ( gzVal > 0.1 * DSP2RAD || gzVal < -0.1 * DSP2RAD )
+  {
+		if( max_gz > 2*DSP2RAD ) {
+			ram_234 = 0;
+			return;
+		}
+  }
+//	if ( std_gz 
+	if ( ram_234++ > 2 )
+	{
+		ram_234 = 0;
+		dift_gz_offset = sum_Gz_CE4/399.0f/DSP2RAD;
+		Gz_offset +=  (int16_t)dift_gz_offset;	
 	}
 }
 
@@ -163,279 +290,35 @@ float correction_gz(float t, float gz)
 	static long _Gz_Count = 0;
 	static float _Duration_t = 0;
 	static float _Mean_Gz = 0;
-	static float _Threshold = 2*DSP2RAD;
 	static float _Gz_large = 0;
 	static int16_t stable = 0;
 	static long _Gz_Count_large = 0;
 	static float _Duration_t_large = 0;
 	static float _Mean_Gz_large = 0;
 	static float _Threshold_large = 200*DSP2RAD;
-	float ez = 0;
 	int16_t dift_gz_offset = 0;
-	if (fabs(gz-_Last_gz) <= _Threshold) {
-		_Gz += gz;
-		_Gz_Count ++;
-		_Mean_Gz = _Gz/_Gz_Count;
-		_Duration_t += t;
+	if ( offset_Cnt_210 )
+	{
+		sum_Gz_CE4 += gz;
+		Gz_Buf_132E[offset_Cnt_210] = Gz_Last_CEC - gz;
+		Gz_Last_CEC = gz;
+		++offset_Cnt_210;
+    if ( offset_Cnt_210 == 400 )
+    {
+      correct_drift();
+      offset_Cnt_210 = 0;
+    }		
 	}
-	else {
-		stable = 0;
-		_Gz = 0;
-		_Gz_Count = 0;
-		_Mean_Gz = 0;
-		_Duration_t = 0;
+	else
+	{
+		Gz_Buf_132E[0] = 0;
+		Gz_Last_CEC = gz;
+		sum_Gz_CE4 =0;
+		offset_Cnt_210++;
 	}
-/*
-	if (0&&(fabs(gz-_Last_gz) <= _Threshold_large) && _Duration_t <0.5 ) { //此0.5与后面开始修改gz的0.5相匹配
-		_Gz_large += gz;
-		_Gz_Count_large ++;
-		_Mean_Gz_large = _Gz_large/_Gz_Count_large;
-		_Duration_t_large += t;
-	}
-	else {
-		stable = 0;
-		_Gz_large = 0;
-		_Gz_Count_large = 0;
-		_Mean_Gz_large = 0;
-		_Duration_t_large = 0;
-		_Threshold_large = 200*DSP2RAD;		
-	}
-*/
 	_Last_gz = gz;
-	if(stable == 1) {
-		ez = -0.5*gz;
-	}
-	if( _Duration_t >= 1 && fabs(gz-_Mean_Gz) <= _Threshold) { // to see if it is stable 8s
-		dift_gz_offset = (_Mean_Gz)/DSP2RAD;
-		if ( fabs((float)dift_gz_offset) >= 20) {   //如果offset 比较大时，快速收敛
-			if ( _Duration_t > 20) {
-				Gz_offset += (int16_t) (dift_gz_offset); // update Gz_offset, modify _Last_gz
-				_Last_gz -= dift_gz_offset*DSP2RAD;
-				_Mean_Gz = 0;
-				_Gz = 0;
-				_Gz_Count = 0;
-				_Duration_t = 0;
-				stable = 1;
-			}
-			else {
-				return ez;
-			}
-		}
-		else if ( fabs((float)dift_gz_offset) >= 10){
-			if ( _Duration_t > 10) {
-				Gz_offset += (int16_t) (dift_gz_offset); // update Gz_offset, modify _Last_gz
-				_Last_gz -= dift_gz_offset*DSP2RAD;
-				_Mean_Gz = 0;
-				_Gz = 0;
-				_Gz_Count = 0;
-				_Duration_t = 0;
-				stable = 1;
-			}
-			else {
-				return ez;
-			}			
-		}		
-		else if ( fabs((float)dift_gz_offset) >= 5){
-			if ( _Duration_t > 5) {
-				Gz_offset += (int16_t) (dift_gz_offset); // update Gz_offset, modify _Last_gz
-				_Last_gz -= dift_gz_offset*DSP2RAD;
-				_Mean_Gz = 0;
-				_Gz = 0;
-				_Gz_Count = 0;
-				_Duration_t = 0;
-				stable = 1;
-			}
-			else {
-				return ez;
-			}			
-		}			
-		else if ( fabs((float)dift_gz_offset) >= 1){
-			Gz_offset += (int16_t) (dift_gz_offset);
-			_Last_gz -= dift_gz_offset*DSP2RAD; // update Gz_offset, modify _Last_gz
-			_Mean_Gz = 0;
-			_Gz = 0;
-			_Gz_Count = 0;
-			_Duration_t = 0;	
-			stable = 1;
-		}
-		else if ( fabs((float)dift_gz_offset) > 0){
-			Gz_offset += (int16_t) (dift_gz_offset / fabs((float)dift_gz_offset));
-			_Last_gz -= DSP2RAD*(dift_gz_offset / fabs((float)dift_gz_offset)); // update Gz_offset, modify _Last_gz				
-			_Mean_Gz = 0;
-			_Gz = 0;
-			_Gz_Count = 0;
-			_Duration_t = 0;	
-			stable = 1;			
-		}		
-		else if (dift_gz_offset == 0) {
-			_Mean_Gz = 0;
-			_Gz = 0;
-			_Gz_Count = 0;
-			_Duration_t = 0;
-			stable = 1;
-		} 
-	}
-	/*
-	if( 0 && _Duration_t_large >= 1 && _Duration_t_large < 10) {  // to correction short time shift 此0.5与前面的0.5相匹配
-		ez = -0.02*gz;
-	}
-	if( 0 && _Duration_t_large >= 10) { // to see if it is stable 10s
-		if ( fabs(_Mean_Gz_large/DSP2RAD) > 0.4){
-			Gz_offset += (int16_t) (_Mean_Gz_large / fabs(_Mean_Gz_large));
-			_Last_gz -= DSP2RAD*(_Mean_Gz_large / fabs(_Mean_Gz_large)); // update Gz_offset, modify _Last_gz
-			_Mean_Gz_large = 0;
-			_Gz_large = 0;
-			_Gz_Count_large = 0;
-			_Duration_t_large = 0;		
-		}
-		else if (dift_gz_offset == 0) {
-			_Mean_Gz_large = 0;
-			_Gz_large = 0;
-			_Gz_Count_large = 0;
-			_Duration_t_large = 0;
-		}
-		ez = - 0.1*gz;
-	} 
-	*/
-	return ez;
-}
 
-/**************************实现函数********************************************
-*函数原型:	   void IMU_AHRSupdate
-*功　　能:	 更新AHRS 更新四元数 
-输入参数： 当前的测量值。
-输出参数：没有
-*******************************************************************************/
-void AHRS_AHRSupdate(float gx, float gy, float gz, float ax, float ay, float az, float mx, float my, float mz) {
-	float norm;
-	float bx, bz;
-	float vx, vy, vz, wx, wy, wz;
-	float g=9.79973;
-	float Ha1,Ha2,Ha3,Ha4,Hb1,Hb2,Hb3,Hb4;
-	float e1,e2,e3,e4,e5,e6;
-	float halfT;
-
-// 先把这些用得到的值算好
-	float q0q0 = q0*q0;
-	float q0q1 = q0*q1;
-	float q0q2 = q0*q2;
-	float q0q3 = q0*q3;
-	float q1q1 = q1*q1;
-	float q1q2 = q1*q2;
-	float q1q3 = q1*q3;
-	float q2q2 = q2*q2;   
-	float q2q3 = q2*q3;
-	float q3q3 = q3*q3;      
-  //石家庄地区磁场 
-//  bx = 0.5500;
-//  bz = 0.8351; 
-	now = micros();  //读取时间
-	if(now<lastUpdate){ //定时器溢出过了。
-		halfT =  ((float)(now + (0xffff- lastUpdate)) / 2000000.0f);
-	}
-	else{
-		halfT =  ((float)(now - lastUpdate) / 2000000.0f);
-	}
-	lastUpdate = now;	//更新时间
-	norm = invSqrt(ax*ax + ay*ay + az*az);       
-	ax = ax * norm*g;
-	ay = ay * norm*g;
-	az = az * norm*g;
-
-	norm = invSqrt(mx*mx + my*my + mz*mz);          
-	mx = mx * norm;
-	my = my * norm;
-	mz = mz * norm;
-  
-	gx=gx-w1;gy=gy-w2;gz=gz-w3;
-
-
-	Ha1=(-q2)*g; Ha2=q3*g;Ha3=-q0*g;Ha4=q1*g;	 
-	Hb1=bx*q0-bz*q2;
-	Hb2=bx*q1+bz*q3;//
-	Hb3=-bx*q2-bz*q0;
-	Hb4=-bx*q3+bz*q1;
-  
-
-	H[0]= Ha1;H[1]= Ha2;H[2]= Ha3;H[3]= Ha4;
-	H[7]= Ha4;H[8]=-Ha3;H[9]= Ha2;H[10]=-Ha1;
-	H[14]=-Ha3;H[15]=-Ha4;H[16]= Ha1;H[17]= Ha2;
-  
-	H[21]= Hb1;H[22]= Hb2;H[23]= Hb3;H[24]= Hb4;      
-	H[28]= Hb4;H[29]=-Hb3;H[30]= Hb2;H[31]=-Hb1;
-	H[35]=-Hb3;H[36]=-Hb4;H[37]= Hb1;H[38]= Hb2;
-  
-  
-
-  //状态更新
-	q0 = q0 + (-q1*gx - q2*gy - q3*gz)*halfT;
-	q1 = q1 + (q0*gx + q2*gz - q3*gy)*halfT;
-	q2 = q2 + (q0*gy - q1*gz + q3*gx)*halfT;
-	q3 = q3 + (q0*gz + q1*gy - q2*gx)*halfT;  
-    // 四元数归一
-	norm = invSqrt(q0*q0 + q1*q1 + q2*q2 + q3*q3);
-	q0 = q0 * norm;
-	q1 = q1 * norm;
-	q2 = q2 * norm;
-	q3 = q3 * norm;
-//F阵赋值
-	F[0]=1;F[8]=1;F[16]=1;F[24]=1;F[32]=1;F[40]=1;F[48]=1;
-	F[1]=-gx*halfT;F[2]=-gz*halfT;F[3]=-gz*halfT;	F[4]=0; F[5]=0; F[6]=0;
-	F[7]=gx*halfT;F[9]=gz*halfT;F[10]=-gy*halfT;F[11]=0; F[12]=0; F[13]=0;
-	F[14]=gy*halfT;F[15]=-gz*halfT;F[17]=gx*halfT;F[18]=0; F[19]=0;F[20]=0;
-	F[21]=gz*halfT;F[22]=gy*halfT;F[23]=-gx*halfT;F[25]=0; F[26]=0; F[27]=0;
-	F[28]=0;F[29]=0;F[30]=0;F[31]=0;F[33]=0;F[34]=0;
-	F[35]=0;F[36]=0;F[37]=0;F[38]=0;F[39]=0;F[41]=0;
-	F[42]=0;F[43]=0;F[44]=0;F[45]=0;F[46]=0;F[47]=0;
- //卡尔曼滤波
-	MatrixMultiply(F,7,7,P,7,7,A );	//A=F*P
-	MatrixTranspose(F,7,7,Ft);	  //F转置  F'
-	MatrixMultiply(A,7,7,Ft,7,7,B); // B=F*P*F'
-	MatrixAdd( B,Q,P1,7,7 );
-	MatrixTranspose(H,6,7,Ht);	  //F转置  F'
-	MatrixMultiply(P1,7,7,Ht,7,6,E );   //E=P*H'
-	MatrixMultiply(H,6,7,E,7,6,F1 ); //	 F1=H*P*H'	6*6
-	MatrixAdd(F1,R,X,6,6 );           //X=F1+R	   6*6
-	UD(X,6,U1,D1);	   //X的UD分解
-	MatrixTranspose(U1,6,6,U1t);	 //U1的转置
-	MatrixMultiply(U1,6,6,D1,6,6,X1); //X1=U1*D1
-	MatrixMultiply(X1,6,6,U1t,6,6,X2); //X2=U1*D1*U1t 
-	MatrixInverse(X2,6,0);	 //X逆 
-	MatrixMultiply(E,7,6,X2,6,6,K ); //增益K   7*6
-
-	vx = 2*(q1q3 - q0q2)*g;
-	vy = 2*(q0q1 + q2q3)*g;
-	vz = (q0q0 - q1q1 - q2q2 + q3q3)*g;
-		   
-	wx = 2*bx*(0.5f - q2q2 - q3q3) + 2*bz*(q1q3 - q0q2);
-	wy = 2*bx*(q1q2 - q0q3) + 2*bz*(q0q1 + q2q3);
-	wz = 2*bx*(q0q2 + q1q3) + 2*bz*(0.5f - q1q1 - q2q2);  
-  
-	e1=ax-vx;e2=ay-vy;e3=az-vz;
-	e4=mx-wx;e5=my-wy;e6=mz-wz;
-	T[0]=e1;T[1]=e2;T[2]=e3;T[3]=e4;T[4]=e5;T[5]=e6;
-	MatrixMultiply(K,7,6,T,6,1,Y );   //Y=K*(Z-Y)	7*1
-	q0= q0+Y[0];
-	q1= q1+Y[1];
-	q2= q2+Y[2];
-	q3= q3+Y[3];
-	w1= w1+Y[4];
-	w2= w2+Y[5];
-	w3= w3+Y[6];
-
-  
-	MatrixMultiply(K,7,6,H,6,7,Z); //Z= K*H		7*7
-	MatrixSub(I,Z,O,7,7 );	  //O=I-K*H
- 
-	MatrixMultiply(O,7,7,P1,7,7,P);
- 
-  // normalise quaternion
-	norm = invSqrt(q0*q0 + q1*q1 + q2*q2 + q3*q3);
-	q0 = q0 * norm;
-	q1 = q1 * norm;
-	q2 = q2 * norm;
-	q3 = q3 * norm;
-}
+}	
 
 /**************************实现函数********************************************
 *函数原型:	   void IMU_AHRSupdate_no_m
@@ -445,7 +328,6 @@ void AHRS_AHRSupdate(float gx, float gy, float gz, float ax, float ay, float az,
 *******************************************************************************/
 #define Kp 2.0f   // proportional gain governs rate of convergence to accelerometer/magnetometer
 #define Ki 0.01f   // integral gain governs rate of convergence of gyroscope biases
-
 void IMU_AHRSupdate_no_m(float gx, float gy, float gz, float ax, float ay, float az) {
   float norm;
   float hx, hy, hz, bx, bz;
@@ -453,7 +335,7 @@ void IMU_AHRSupdate_no_m(float gx, float gy, float gz, float ax, float ay, float
   float ex, ey, ez,halfT;
   float tempq0,tempq1,tempq2,tempq3;
 //	float yaw_angles; //yaw_angle
-// 先把这些用得到的值算好
+  // 先把这些用得到的值算好
   float q0q0 = q0*q0;
   float q0q1 = q0*q1;
   float q0q2 = q0*q2;
@@ -467,10 +349,10 @@ void IMU_AHRSupdate_no_m(float gx, float gy, float gz, float ax, float ay, float
   
   now = micros();  //读取时间
   if(now<lastUpdate){ //定时器溢出过了。
-		halfT =  ((float)(now + (0xffff- lastUpdate)) / 2000000.0f);
+  halfT =  ((float)(now + (0xffff- lastUpdate)) / 2000000.0f);
   }
   else	{
-		halfT =  ((float)(now - lastUpdate) / 2000000.0f);
+  halfT =  ((float)(now - lastUpdate) / 2000000.0f);
   }
   lastUpdate = now;	//更新时间
   norm = invSqrt(ax*ax + ay*ay + az*az);       
@@ -538,21 +420,21 @@ if(ex != 0.0f && ey != 0.0f /*&& ez != 0.0f*/){
 输入参数： 将要存放四元数的数组首地址
 输出参数：没有
 *******************************************************************************/
+float mygetqval[9];	//用于存放传感器转换结果的数组
+void IMU_getQ(float * q) {
 
-void AHRS_getQ(float * q) {
-	float mygetqval[9];	//用于存放传感器转换结果的数组
-
-	IMU_getValues(mygetqval);	 
-
+  IMU_getValues(mygetqval);	 
   //将陀螺仪的测量值转成弧度每秒
   //加速度和磁力计保持 ADC值　不需要转换
-	AHRS_AHRSupdate(mygetqval[3] * M_PI/180, mygetqval[4] * M_PI/180, mygetqval[5] * M_PI/180,
-	mygetqval[0], mygetqval[1], mygetqval[2], mygetqval[6], mygetqval[7], mygetqval[8]);
-     
-	q[0] = q0; //返回当前值
-	q[1] = q1;
-	q[2] = q2;
-	q[3] = q3;
+//IMU_AHRSupdate(mygetqval[3] * M_PI/180, mygetqval[4] * M_PI/180, mygetqval[5] * M_PI/180,
+ //              mygetqval[0], mygetqval[1], mygetqval[2], mygetqval[6], mygetqval[7], mygetqval[8]);
+	IMU_AHRSupdate_no_m(mygetqval[3] * M_PI/180, mygetqval[4] * M_PI/180, mygetqval[5] * M_PI/180,
+   mygetqval[0], mygetqval[1], mygetqval[2]);
+	
+  q[0] = q0; //返回当前值
+  q[1] = q1;
+  q[2] = q2;
+  q[3] = q3;
 }
 
 /**************************实现函数********************************************
@@ -563,8 +445,12 @@ void AHRS_getQ(float * q) {
 *******************************************************************************/
 void AHRS_getYawPitchRoll(float * angles) {
   float q[4]; //　四元数
-  
-  AHRS_getQ(q); //更新全局四元数
+  volatile float gx=0.0, gy=0.0, gz=0.0; //估计重力方向
+	q[0] = 1;
+	q[1] = 0;
+	q[2] = 0;
+	q[3] = 0;
+  IMU_getQ(q); //更新全局四元数
   angles[0] = -atan2(2 * q[1] * q[2] + 2 * q[0] * q[3], -2 * q[2]*q[2] - 2 * q[3] * q[3] + 1)* 180/M_PI; // yaw 
   angles[1] = -asin(-2 * q[1] * q[3] + 2 * q[0] * q[2])* 180/M_PI; // pitch
   angles[2] = atan2(2 * q[2] * q[3] + 2 * q[0] * q[1], -2 * q[1] * q[1] - 2 * q[2] * q[2] + 1)* 180/M_PI; // roll
