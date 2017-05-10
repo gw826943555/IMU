@@ -2,6 +2,8 @@
 #include "arm_math.h"
 #include "matrix.h"
 #include "printf_.h"
+#include "inv_mpu.h"
+#include "inv_mpu_dmp_motion_driver.h" 
 
 volatile float exInt, eyInt, ezInt;  // 误差积分
 volatile float q0, q1, q2, q3; // 全局四元数
@@ -455,4 +457,175 @@ void AHRS_getYawPitchRoll(float * angles) {
   angles[1] = -asin(-2 * q[1] * q[3] + 2 * q[0] * q[2])* 180/M_PI; // pitch
   angles[2] = atan2(2 * q[2] * q[3] + 2 * q[0] * q[1], -2 * q[1] * q[1] - 2 * q[2] * q[2] + 1)* 180/M_PI; // roll
   if(angles[0]<0)angles[0]+=360.0f;  //将 -+180度  转成0-360度
+}
+
+void _AHRS::Init(void)
+{
+	hw.addr = sensoraddr;
+	mpu_init(0);
+	mpu_set_sensors(INV_XYZ_GYRO|INV_XYZ_ACCEL);
+	mpu_set_sample_rate(1000);
+//	mpu_run_self_test(0,0);
+	//	HMC5883L_SetUp();
+	delay_ms(50);
+	//	MPU6050_initialize();
+	for(uint8_t i=0;i<10;i++)
+	{//
+		delay_ms(1);
+		getMotion6(0,0,0,0,0,0);
+	}
+	InitGyro_Offset();
+
+	//陀螺仪偏差
+	_exInt = 0.0;
+	_eyInt = 0.0;
+	_ezInt = 0.0;
+
+	_lastUpdate = micros();//更新时间
+	_now = micros();
+
+	_q0=1.0;
+	_q1=0;
+	_q2=0;
+	_q3=0;
+}
+
+void _AHRS::Init_Tim(void)
+{
+	TIM_TimeBaseInitTypeDef  TIM_TimeBaseStructure;
+
+  RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM2 | RCC_APB1Periph_TIM3, ENABLE); 
+	/* TIM2 configuration*/ 
+  /* Time Base configuration 基本配置 配置定时器的时基单元*/
+  TIM_TimeBaseStructInit(&TIM_TimeBaseStructure); 
+  TIM_TimeBaseStructure.TIM_Period = 0xffffffff; //自动重装值         
+  TIM_TimeBaseStructure.TIM_Prescaler = SystemCoreClock/1000000-1;       
+  TIM_TimeBaseStructure.TIM_ClockDivision = TIM_CKD_DIV1;    
+  TIM_TimeBaseStructure.TIM_CounterMode = TIM_CounterMode_Up;  
+  TIM_TimeBaseInit(TIM2, &TIM_TimeBaseStructure); 
+  
+	TIM_Cmd(TIM2, ENABLE);   
+}
+
+void _AHRS::getMotion6(int16_t* ax, int16_t* ay, int16_t* az, int16_t* gx, int16_t* gy, int16_t* gz) 
+{
+	hw.addr = sensoraddr;
+	if(_isRdy())
+	{
+		int16_t accel[3],gyro[3];
+		MPU_GetAccel(0,accel,0);
+		MPU_GetGyro(0,gyro,0);
+		newValues(accel[0],accel[1],accel[2],gyro[0],gyro[1],gyro[2]);
+		*ax = FIFO[0][10];
+		*ay = FIFO[1][10];
+		*az = FIFO[2][10];
+		*gx = FIFO[3][10]-Gx_offset;
+		*gy = FIFO[4][10]-Gy_offset;
+		*gz = FIFO[5][10]-Gz_offset;
+	} else {
+		*ax = FIFO[0][10];//=MPU6050_FIFO[0][10];
+		*ay = FIFO[1][10];//=MPU6050_FIFO[1][10];
+		*az = FIFO[2][10];//=MPU6050_FIFO[2][10];
+		*gx = FIFO[3][10]-Gx_offset;//=MPU6050_FIFO[3][10];
+		*gy = FIFO[4][10]-Gy_offset;//=MPU6050_FIFO[4][10];
+		*gz = FIFO[5][10]-Gz_offset;//=MPU6050_FIFO[5][10];
+	}
+}
+
+uint8_t _AHRS::_isRdy()
+{
+	if(sensoraddr==0)
+	{
+		if(GPIO_ReadInputDataBit(IMU0_IT_PORT,IMU0_IT_Pinx)==Bit_RESET)
+		{
+			return 1;
+		}else{
+			return 0;
+		}
+	}
+	return 0;
+}
+
+void _AHRS::newValues(int16_t ax,int16_t ay,int16_t az,int16_t gx,int16_t gy,int16_t gz)
+{
+	unsigned char i ;
+	int32_t sum=0;
+	for(i=1;i<10;i++){	//FIFO 操作
+		FIFO[0][i-1]=FIFO[0][i];
+		FIFO[1][i-1]=FIFO[1][i];
+		FIFO[2][i-1]=FIFO[2][i];
+		FIFO[3][i-1]=FIFO[3][i];
+		FIFO[4][i-1]=FIFO[4][i];
+		FIFO[5][i-1]=FIFO[5][i];
+	}
+		FIFO[0][9]=ax;//将新的数据放置到 数据的最后面
+		FIFO[1][9]=ay;
+		FIFO[2][9]=az;
+		FIFO[3][9]=gx;
+		FIFO[4][9]=gy;
+		FIFO[5][9]=gz;
+
+	sum=0;
+	for(i=0;i<10;i++){														//求当前数组的合，再取平均值
+		 sum+=FIFO[0][i];
+	}
+	FIFO[0][10]=sum/10;
+
+	sum=0;
+	for(i=0;i<10;i++){
+		 sum+=FIFO[1][i];
+	}
+	FIFO[1][10]=sum/10;
+
+	sum=0;
+	for(i=0;i<10;i++){
+		 sum+=FIFO[2][i];
+	}
+	FIFO[2][10]=sum/10;
+
+	sum=0;
+	for(i=0;i<10;i++){
+		 sum+=FIFO[3][i];
+	}
+	FIFO[3][10]=sum/10;
+
+	sum=0;
+	for(i=0;i<10;i++){
+		 sum+=FIFO[4][i];
+	}
+	FIFO[4][10]=sum/10;
+
+	sum=0;
+	for(i=0;i<10;i++){
+		 sum+=FIFO[5][i];
+	}
+	FIFO[5][10]=sum/10;
+}
+
+void _AHRS::InitGyro_Offset()
+{
+	unsigned char i;
+	int16_t temp[6];
+	int32_t	tempgx=0,tempgy=0,tempgz=0;
+	int32_t	tempax=0,tempay=0,tempaz=0;
+	_Gx_offset=0;
+	_Gy_offset=0;
+	_Gz_offset=0;
+	for(i=0;i<50;i++){
+  		delay_ms(1);
+  		getMotion6(&temp[0],&temp[1],&temp[2],&temp[3],&temp[4],&temp[5]);
+	}
+ 	for(i=0;i<100;i++){
+		delay_ms(1);
+		getMotion6(&temp[0],&temp[1],&temp[2],&temp[3],&temp[4],&temp[5]);
+		tempax+= temp[0];
+		tempay+= temp[1];
+		tempaz+= temp[2];
+		tempgx+= temp[3];
+		tempgy+= temp[4];
+		tempgz+= temp[5];
+	}
+	_Gx_offset=tempgx/100;//MPU6050_FIFO[3][10];
+	_Gy_offset=tempgy/100;//MPU6050_FIFO[4][10];
+	_Gz_offset=tempgz/100;//MPU6050_FIFO[5][10];
 }
