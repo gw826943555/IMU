@@ -629,3 +629,192 @@ void _AHRS::InitGyro_Offset()
 	_Gy_offset=tempgy/100;//MPU6050_FIFO[4][10];
 	_Gz_offset=tempgz/100;//MPU6050_FIFO[5][10];
 }
+
+void _AHRS::getYawPitchRoll(float * angles)
+{
+	float q[4]; //　四元数
+  volatile float gx=0.0, gy=0.0, gz=0.0; //估计重力方向
+	q[0] = 1;
+	q[1] = 0;
+	q[2] = 0;
+	q[3] = 0;
+  getQ(q); //更新全局四元数
+  
+  angles[0] = -atan2(2 * q[1] * q[2] + 2 * q[0] * q[3], -2 * q[2]*q[2] - 2 * q[3] * q[3] + 1)* 180/M_PI; // yaw
+  angles[1] = -asin(-2 * q[1] * q[3] + 2 * q[0] * q[2])* 180/M_PI; // pitch
+  angles[2] = atan2(2 * q[2] * q[3] + 2 * q[0] * q[1], -2 * q[1] * q[1] - 2 * q[2] * q[2] + 1)* 180/M_PI; // roll
+  if(angles[0]<0)angles[0]+=360.0f;  //将 -+180度  转成0-360度
+}
+
+void _AHRS::getQ(float * q)
+{
+	float mygetqval[9];	//用于存放传感器转换结果的数组
+	getValues(mygetqval);	 
+  //将陀螺仪的测量值转成弧度每秒
+  //加速度和磁力计保持 ADC值　不需要转换
+	//IMU_AHRSupdate(mygetqval[3] * M_PI/180, mygetqval[4] * M_PI/180, mygetqval[5] * M_PI/180,
+ //              mygetqval[0], mygetqval[1], mygetqval[2], mygetqval[6], mygetqval[7], mygetqval[8]);
+	update_no_m(mygetqval[3] * M_PI/180, mygetqval[4] * M_PI/180, mygetqval[5] * M_PI/180,
+	mygetqval[0], mygetqval[1], mygetqval[2]);
+	
+  q[0] = q0; //返回当前值
+  q[1] = q1;
+  q[2] = q2;
+  q[3] = q3;
+}
+
+void _AHRS::getValues(float * val)
+{
+	int16_t accgyroval[6];
+	int i;
+	//读取加速度和陀螺仪的当前ADC
+	getMotion6(&accgyroval[0], &accgyroval[1], &accgyroval[2], &accgyroval[3], &accgyroval[4], &accgyroval[5]);
+	for(i = 0; i<6; i++) {
+		if(i < 3) {
+			val[i] = (float) accgyroval[i];
+		}
+		else {
+			if ( accgyroval[i] <3 && accgyroval[i]> -3 ) {
+				val[i] = 0;
+			} else {
+				val[i] = ((float) accgyroval[i]) / LSB; //转成度每秒
+			}
+	//这里已经将量程改成了 360度每秒  LSB 对应 1度每秒
+		}
+	}
+}
+
+#define Kp 2.0f   // proportional gain governs rate of convergence to accelerometer/magnetometer
+#define Ki 0.01f   // integral gain governs rate of convergence of gyroscope biases
+void _AHRS::update_no_m(float gx, float gy, float gz, float ax, float ay, float az)
+{
+	float norm;
+  float hx, hy, hz, bx, bz;
+  float vx, vy, vz, wx, wy, wz;
+  float ex, ey, ez,halfT;
+  float tempq0,tempq1,tempq2,tempq3;
+//	float yaw_angles; //yaw_angle
+  // 先把这些用得到的值算好
+  float q0q0 = _q0*_q0;
+  float q0q1 = _q0*_q1;
+  float q0q2 = _q0*_q2;
+  float q0q3 = _q0*_q3;
+  float q1q1 = _q1*_q1;
+  float q1q2 = _q1*_q2;
+  float q1q3 = _q1*_q3;
+  float q2q2 = _q2*_q2;   
+  float q2q3 = _q2*_q3;
+  float q3q3 = _q3*_q3;          
+  
+  _now = micros();  //读取时间
+  if(_now<_lastUpdate){ //定时器溢出过了。
+  halfT =  ((float)(now + (0xffff- _lastUpdate)) / 2000000.0f);
+  }
+  else	{
+  halfT =  ((float)(now - _lastUpdate) / 2000000.0f);
+  }
+  _lastUpdate = _now;	//更新时间
+  norm = invSqrt(ax*ax + ay*ay + az*az);       
+  ax = ax * norm;
+  ay = ay * norm;
+  az = az * norm;
+  //把加计的三维向量转成单位向量。
+  /*
+  这是把四元数换算成《方向余弦矩阵》中的第三列的三个元素。
+  根据余弦矩阵和欧拉角的定义，地理坐标系的重力向量，转到机体坐标系，正好是这三个元素。
+  所以这里的vx\y\z，其实就是当前的欧拉角（即四元数）的机体坐标参照系上，换算出来的重力单位向量。
+  */
+  vx = 2*(q1q3 - q0q2);
+  vy = 2*(q0q1 + q2q3);
+  vz = q0q0 - q1q1 - q2q2 + q3q3;
+
+  
+  //现在把加速度的测量矢量和参考矢量做叉积，把磁场的测量矢量和参考矢量也做叉积。都拿来来修正陀螺。
+  ex = (ay*vz - az*vy) ;		//To do
+  ey = (az*vx - ax*vz) ;
+	//ez = 0*correction_yaw(0,GET_EZ,0);
+  //ez = (ax*vy - ay*vx) ;
+	//ez = 0;
+	ez = correction_gz(halfT*2.0,gz,ax,ay,az); //gz : rad/s; halfT :time s
+  /*
+  axyz是机体坐标参照系上，加速度计测出来的重力向量，也就是实际测出来的重力向量。
+  axyz是测量得到的重力向量，vxyz是陀螺积分后的姿态来推算出的重力向量，它们都是机体坐标参照系上的重力向量。
+  那它们之间的误差向量，就是陀螺积分后的姿态和加计测出来的姿态之间的误差。
+  向量间的误差，可以用向量叉积（也叫向量外积、叉乘）来表示，exyz就是两个重力向量的叉积。
+  这个叉积向量仍旧是位于机体坐标系上的，而陀螺积分误差也是在机体坐标系，而且叉积的大小与陀螺积分误差成正比，正好拿来纠正陀螺。（你可以自己拿东西想象一下）由于陀螺是对机体直接积分，所以对陀螺的纠正量会直接体现在对机体坐标系的纠正。
+  */
+	if(ex != 0.0f && ey != 0.0f /*&& ez != 0.0f*/){
+		_exInt = _exInt + ex * Ki * halfT;
+		_eyInt = _eyInt + ey * Ki * halfT;	
+		//ezInt = ezInt + ez * Ki * halfT;
+
+		// 用叉积误差来做PI修正陀螺零偏
+		gx = gx + Kp*ex + _exInt;
+		gy = gy + Kp*ey + _eyInt;
+		//gz = gz + Kp*ez + ezInt;
+		gz = gz + Kp * ez;
+
+	}
+
+  // 四元数微分方程
+  tempq0 = _q0 + (-_q1*gx - _q2*gy - _q3*gz)*halfT;
+  tempq1 = _q1 + (_q0*gx + _q2*gz - _q3*gy)*halfT;
+  tempq2 = _q2 + (_q0*gy - _q1*gz + _q3*gx)*halfT;
+  tempq3 = _q3 + (_q0*gz + _q1*gy - _q2*gx)*halfT;  
+  
+  // 四元数规范化
+  norm = invSqrt(tempq0*tempq0 + tempq1*tempq1 + tempq2*tempq2 + tempq3*tempq3);
+  _q0 = tempq0 * norm;
+  _q1 = tempq1 * norm;
+  _q2 = tempq2 * norm;
+  _q3 = tempq3 * norm;
+
+//	yaw_angles = -atan2(2 * q1 * q2 + 2 * q0 * q3, -2 * q2*q2 - 2 * q3 * q3 + 1)* 180/M_PI; //yaw degree
+	//correction_yaw(yaw_angles,halfT*2.0,gz); //gz : rad/s; yaw_angle: degree, halfT :time
+}
+
+float _AHRS::correction_gz(float t, float gz, float ax, float ay, float az)
+{
+	static float _Gz = 0;
+	static float _Last_gz = 0;
+	static long _Gz_Count = 0;
+	static float _Duration_t = 0;
+	static float _Mean_Gz = 0;
+	static float _Gz_large = 0;
+	static int16_t stable = 0;
+	static long _Gz_Count_large = 0;
+	static float _Duration_t_large = 0;
+	static float _Mean_Gz_large = 0;
+	static float _Threshold_large = 200*DSP2RAD;
+	int16_t dift_gz_offset = 0;
+	if ( _offset_Cnt_210 )
+	{
+		sum_Gz_CE4 += gz;
+		_Gz_Buf_132E[offset_Cnt_210] = _Gz_Last_CEC - gz;
+		_Ax_Buf_1662[offset_Cnt_210] = _Ax_Last_165C - ax;
+		_Ay_Buf_1982[offset_Cnt_210] = _Ay_Last_165E - ay;
+		_Az_Buf_1CA2[offset_Cnt_210] = _Az_Last_1660 - az;
+		
+		_Gz_Last_CEC = gz;
+		++_offset_Cnt_210;
+    if ( _offset_Cnt_210 == 400 )
+    {
+      correct_drift();
+      _offset_Cnt_210 = 0;
+    }		
+	}
+	else
+	{
+		_Gz_Buf_132E[0] = 0;
+		_Gz_Last_CEC = gz;
+		_sum_Gz_CE4 =0;
+		_Ax_Buf_1662[0] = 0;
+		_Ay_Buf_1982[0] = 0;
+		_Az_Buf_1CA2[0] = 0;
+		_Ax_Last_165C = ax;
+		_Ay_Last_165E = ay;
+		_Az_Last_1660 = az;
+		_offset_Cnt_210 ++;
+	}
+	_Last_gz = gz;
+}
