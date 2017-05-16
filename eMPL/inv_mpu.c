@@ -668,6 +668,41 @@ static int set_int_enable(unsigned char enable)
 }
 
 /**
+ *  @brief      Enable/disable data ready interrupt.
+ *  If the DMP is on, the DMP interrupt is enabled. Otherwise, the data ready
+ *  interrupt is used.
+ *  @param[in]  enable      1 to enable interrupt.
+ *  @return     0 if successful.
+ */
+int mpu_set_int_enable(unsigned char enable)
+{
+    unsigned char tmp;
+
+    if (st.chip_cfg.dmp_on) {
+        if (enable)
+            tmp = BIT_DMP_INT_EN;
+        else
+            tmp = 0x00;
+        if (i2c_write(st.hw->addr, st.reg->int_enable, 1, &tmp))
+            return -1;
+        st.chip_cfg.int_enable = tmp;
+    } else {
+//        if (!st.chip_cfg.sensors)
+//            return -1;
+//        if (enable && st.chip_cfg.int_enable)
+//            return 0;
+        if (enable)
+            tmp = BIT_DATA_RDY_EN;
+        else
+            tmp = 0x00;
+        if (i2c_write(st.hw->addr, st.reg->int_enable, 1, &tmp))
+            return -1;
+//        st.chip_cfg.int_enable = tmp;
+    }
+    return 0;
+}
+
+/**
  *  @brief      Register dump for testing.
  *  @return     0 if successful.
  */

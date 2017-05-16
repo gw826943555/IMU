@@ -803,10 +803,10 @@ void MPU_getMotion6(int16_t* ax, int16_t* ay, int16_t* az, int16_t* gx, int16_t*
 		MPU_GetAccel(0,accel,0);
 		MPU_GetGyro(0,gyro,0);
 		MPU_newValues(accel[0],accel[1],accel[2],gyro[0],gyro[1],gyro[2]);
-		*ax  =MPU6050_FIFO[0][10];
-		*ay  =MPU6050_FIFO[1][10];
+		*ax = MPU6050_FIFO[0][10];
+		*ay = MPU6050_FIFO[1][10];
 		*az = MPU6050_FIFO[2][10];
-		*gx  =MPU6050_FIFO[3][10]-Gx_offset;
+		*gx = MPU6050_FIFO[3][10]-Gx_offset;
 		*gy = MPU6050_FIFO[4][10]-Gy_offset;
 		*gz = MPU6050_FIFO[5][10]-Gz_offset;
 	} else {

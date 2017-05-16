@@ -5,6 +5,12 @@
 #include "inv_mpu.h"
 #include "inv_mpu_dmp_motion_driver.h" 
 
+#ifdef USE_CCMRAM
+CCMRAM	float Gz_Buf[4][400];
+CCMRAM	float Gy_Buf[4][400];
+CCMRAM	int16_t  FIFO[4][6][11];
+#endif
+
 volatile float exInt, eyInt, ezInt;  // 误差积分
 volatile float q0, q1, q2, q3; // 全局四元数
 volatile float integralFBhand,handdiff;
@@ -465,12 +471,11 @@ void _AHRS::Init(void)
 	mpu_init(0);
 	mpu_set_sensors(INV_XYZ_GYRO|INV_XYZ_ACCEL);
 	mpu_set_sample_rate(1000);
-//	mpu_run_self_test(0,0);
-	//	HMC5883L_SetUp();
+//	mpu_set_int_enable(1);
+	
 	delay_ms(50);
-	//	MPU6050_initialize();
 	for(uint8_t i=0;i<10;i++)
-	{//
+	{
 		delay_ms(1);
 		getMotion6(0,0,0,0,0,0);
 	}
@@ -513,37 +518,33 @@ void _AHRS::getMotion6(int16_t* ax, int16_t* ay, int16_t* az, int16_t* gx, int16
 	if(_isRdy())
 	{
 		int16_t accel[3],gyro[3];
-		MPU_GetAccel(0,accel,0);
-		MPU_GetGyro(0,gyro,0);
+		MPU_GetAccel(sensoraddr,accel,0);
+		MPU_GetGyro(sensoraddr,gyro,0);
 		newValues(accel[0],accel[1],accel[2],gyro[0],gyro[1],gyro[2]);
 		*ax = FIFO[0][10];
 		*ay = FIFO[1][10];
 		*az = FIFO[2][10];
-		*gx = FIFO[3][10]-Gx_offset;
-		*gy = FIFO[4][10]-Gy_offset;
-		*gz = FIFO[5][10]-Gz_offset;
+		*gx = FIFO[3][10]-_Gx_offset;
+		*gy = FIFO[4][10]-_Gy_offset;
+		*gz = FIFO[5][10]-_Gz_offset;
+
 	} else {
 		*ax = FIFO[0][10];//=MPU6050_FIFO[0][10];
 		*ay = FIFO[1][10];//=MPU6050_FIFO[1][10];
 		*az = FIFO[2][10];//=MPU6050_FIFO[2][10];
-		*gx = FIFO[3][10]-Gx_offset;//=MPU6050_FIFO[3][10];
-		*gy = FIFO[4][10]-Gy_offset;//=MPU6050_FIFO[4][10];
-		*gz = FIFO[5][10]-Gz_offset;//=MPU6050_FIFO[5][10];
+		*gx = FIFO[3][10]-_Gx_offset;
+		*gy = FIFO[4][10]-_Gy_offset;
+		*gz = FIFO[5][10]-_Gz_offset;
 	}
+//	myprintf("offset:%d %d %d \r\n",_Gx_offset,_Gy_offset,_Gz_offset);
 }
 
 uint8_t _AHRS::_isRdy()
 {
-	if(sensoraddr==0)
-	{
-		if(GPIO_ReadInputDataBit(IMU0_IT_PORT,IMU0_IT_Pinx)==Bit_RESET)
-		{
-			return 1;
-		}else{
-			return 0;
-		}
-	}
-	return 0;
+	if(GPIO_ReadInputDataBit(IntPortSrc[sensoraddr],IntPinSrc[sensoraddr])==Bit_SET)
+		return 0;
+	else
+		return 1;
 }
 
 void _AHRS::newValues(int16_t ax,int16_t ay,int16_t az,int16_t gx,int16_t gy,int16_t gz)
@@ -650,6 +651,7 @@ void _AHRS::getQ(float * q)
 {
 	float mygetqval[9];	//用于存放传感器转换结果的数组
 	getValues(mygetqval);	 
+//	myprintf("value:%f %f %f %f %f %f\r\n",mygetqval[0],mygetqval[1],mygetqval[2],mygetqval[3],mygetqval[4],mygetqval[5]);
   //将陀螺仪的测量值转成弧度每秒
   //加速度和磁力计保持 ADC值　不需要转换
 	//IMU_AHRSupdate(mygetqval[3] * M_PI/180, mygetqval[4] * M_PI/180, mygetqval[5] * M_PI/180,
@@ -657,10 +659,11 @@ void _AHRS::getQ(float * q)
 	update_no_m(mygetqval[3] * M_PI/180, mygetqval[4] * M_PI/180, mygetqval[5] * M_PI/180,
 	mygetqval[0], mygetqval[1], mygetqval[2]);
 	
-  q[0] = q0; //返回当前值
-  q[1] = q1;
-  q[2] = q2;
-  q[3] = q3;
+  q[0] = _q0; //返回当前值
+  q[1] = _q1;
+  q[2] = _q2;
+  q[3] = _q3;
+//	myprintf("q:%f %f %f %f \r\n",q[0],q[1],q[2],q[3]);
 }
 
 void _AHRS::getValues(float * val)
@@ -688,6 +691,7 @@ void _AHRS::getValues(float * val)
 #define Ki 0.01f   // integral gain governs rate of convergence of gyroscope biases
 void _AHRS::update_no_m(float gx, float gy, float gz, float ax, float ay, float az)
 {
+//	myprintf("fusion:%f %f %f %f %f %f\r\n",gx,gy,gz,ax,ay,az);
 	float norm;
   float hx, hy, hz, bx, bz;
   float vx, vy, vz, wx, wy, wz;
@@ -708,10 +712,10 @@ void _AHRS::update_no_m(float gx, float gy, float gz, float ax, float ay, float 
   
   _now = micros();  //读取时间
   if(_now<_lastUpdate){ //定时器溢出过了。
-  halfT =  ((float)(now + (0xffff- _lastUpdate)) / 2000000.0f);
+  halfT =  ((float)(_now + (0xffff- _lastUpdate)) / 2000000.0f);
   }
   else	{
-  halfT =  ((float)(now - _lastUpdate) / 2000000.0f);
+  halfT =  ((float)(_now - _lastUpdate) / 2000000.0f);
   }
   _lastUpdate = _now;	//更新时间
   norm = invSqrt(ax*ax + ay*ay + az*az);       
@@ -736,6 +740,8 @@ void _AHRS::update_no_m(float gx, float gy, float gz, float ax, float ay, float 
   //ez = (ax*vy - ay*vx) ;
 	//ez = 0;
 	ez = correction_gz(halfT*2.0,gz,ax,ay,az); //gz : rad/s; halfT :time s
+	if (gz > -3*DSP2RAD && gz < 3*DSP2RAD)
+		gz = 0;
   /*
   axyz是机体坐标参照系上，加速度计测出来的重力向量，也就是实际测出来的重力向量。
   axyz是测量得到的重力向量，vxyz是陀螺积分后的姿态来推算出的重力向量，它们都是机体坐标参照系上的重力向量。
@@ -799,7 +805,7 @@ float _AHRS::correction_gz(float t, float gz, float ax, float ay, float az)
 		++_offset_Cnt_210;
     if ( _offset_Cnt_210 == 400 )
     {
-      correct_drift();
+//      correctDrift();
       _offset_Cnt_210 = 0;
     }		
 	}
@@ -818,3 +824,82 @@ float _AHRS::correction_gz(float t, float gz, float ax, float ay, float az)
 	}
 	_Last_gz = gz;
 }
+
+void _AHRS::correctDrift()
+{
+	int32_t i;
+	float sum0,sum1,sum2;
+	float gzVal,AxVal,AyVal,AzVal;
+	float dift_gz_offset = 0;
+	float max_gz = 0;
+	float std_gz = 0;
+	sum0 = 0;
+  sum1 = 0;
+	sum2 = 0;
+  for ( i = 1; i < 400; ++i )
+  {
+		if( fabs(_Gz_Buf_132E[i]) > max_gz) {
+			 max_gz = fabs(_Gz_Buf_132E[i]);
+		}
+    sum2 += _Gz_Buf_132E[i];
+  }	
+	gzVal = sum2 / 399.0f;
+	for ( i = 1; i < 400; ++i ) {
+		std_gz += (gzVal - _Gz_Buf_132E[i]) * (gzVal - _Gz_Buf_132E[i]);
+	}
+
+	 for ( i = 1; i < 400; ++i )
+  {
+    sum0 += _Ax_Buf_1662[i];
+    sum1 += _Ay_Buf_1982[i];
+    sum2 += _Az_Buf_1CA2[i];
+  }
+	
+  AxVal = sum0 / 399.0f;
+  AyVal = sum1 / 399.0f;
+  AzVal = sum2 / 399.0f;	
+	
+	std_gz = sqrt(std_gz/399.0f);
+	dift_gz_offset = sum_Gz_CE4/399.0f/DSP2RAD;
+  if ( gzVal > 0.009 * DSP2RAD || gzVal < -0.009 * DSP2RAD )
+  {
+			_ram_234 = 0;
+			return;
+  }
+//	if (std_gz > 0.1*DSP2RAD )
+//	{
+//		ram_234 = 0;
+//		return;
+//	}
+  if (  ( AxVal > 0.2) || ( AxVal < -0.2) )
+  {
+		return;
+  }
+  if (  ( AyVal > 0.2) || ( AyVal < -0.2) )
+  {
+		return;
+  }
+  if (  ( AzVal > 0.2) || ( AzVal < -0.2) )
+  {
+		return;
+  }
+//	if ( std_gz 
+	if ( _ram_234++ > 2 )
+	{
+		_ram_234 = 0;
+		_Gz_offset +=  (int16_t)dift_gz_offset;	
+	}
+}
+
+GPIO_TypeDef*	_AHRS::IntPortSrc[6]={GPIOE,GPIOE,GPIOD,GPIOD,GPIOD};
+uint16_t _AHRS::IntPinSrc[6]={GPIO_Pin_3,GPIO_Pin_9,GPIO_Pin_11,GPIO_Pin_8,GPIO_Pin_6,GPIO_Pin_7};
+#ifdef USE_CCMRAM
+_AHRS::_AHRS(uint8_t Addr)
+{
+	sensoraddr = Addr;
+}
+#elif
+
+#endif
+
+class _AHRS AHRS0(0),AHRS1(1);

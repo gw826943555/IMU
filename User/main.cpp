@@ -8,6 +8,7 @@
 #include "inv_mpu.h"
 #include "inv_mpu_dmp_motion_driver.h" 
 #include "ahrs.h"
+#include "math.h"
 
 uint8_t Tx_buf[100]={0x01,0x02,0x03,0x04,0x05,0x06,0xFF,
 	0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF
@@ -66,9 +67,8 @@ int main(void)
 	uint32_t count=0;
 	uint32_t count1=0;
 	
-//	Imu::Instance()->EnableITx(IMU0,ENABLE);
-//	MPU_NormalInit();
-	AHRS_init();
+	AHRS0.Init_Tim();
+	AHRS0.Init();
 	Imu::Instance()->EnableITx(IMU0,ENABLE);
 	short gyro[3],accl[3],sensors;
 	long quat[4];
@@ -76,24 +76,15 @@ int main(void)
 	int res=0;
 	while(1)
 	{
-		AHRS_getYawPitchRoll(Rx_buf);
-		MPU_getMotion6(&accl[0],&accl[1],&accl[2],&gyro[0],&gyro[1],&gyro[2]);
-		mpu_get_gyro_reg(accl,0);
+		++count;
+		AHRS0.getYawPitchRoll(Rx_buf);
 		if(HeartBeat.isAbsoluteTimeUp())
 		{
-//			MPU_GetAccel(IMU0,RxBuf,0);
-//			myprintf("ACCEL0:%d %d %d %d\r\n",accl[0],accl[1],accl[2],gyro[0]);
-//			MPU_GetGyro(IMU0,RxBuf,0);
-			myprintf("data:%f %f %f \r\n",(float)Rx_buf[0],(float)Rx_buf[1],(float)Rx_buf[2]);
-//			MPU_GetAccel(IMU1,RxBuf,0);
-//			myprintf("ACCEL1:%6d %6d %6d ",RxBuf[0],RxBuf[1],RxBuf[2]);
-//			MPU_GetGyro(IMU1,RxBuf,0);
-//			myprintf("GRRO1:%6d %6d %6d \r\n",RxBuf[0],RxBuf[1],RxBuf[2]);
-//			MPU_GetAccel(IMU2,RxBuf,0);
-//			myprintf("ACCEL2:%6d %6d %6d ",RxBuf[0],RxBuf[1],RxBuf[2]);
-//			MPU_GetGyro(IMU2,RxBuf,0);
-//			myprintf("GRRO2:%6d %6d %6d \r\n",RxBuf[0],RxBuf[1],RxBuf[2]);
-//			myprintf("Int:0x%2x\r\n",MPU_ReadReg(0,I2C_MST_CTRL));
+			myprintf("%d\r\n",count);
+			count=0;
+			AHRS0.getMotion6(&accl[0],&accl[1],&accl[2],&gyro[0],&gyro[1],&gyro[2]);
+			myprintf("gyro:%d %d %d\r\n",gyro[0],gyro[1],gyro[2]);
+			myprintf("gyro:%f %f %f \r\n",Rx_buf[0],Rx_buf[1],Rx_buf[2]);
 			LED::Instance()->Toggle();
 		}
 		if(Delay.isAbsoluteTimeUp())
