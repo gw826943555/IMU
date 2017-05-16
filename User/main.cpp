@@ -23,19 +23,11 @@ int main(void)
 	BaseTimer::Instance()->initialize();
 	printf_init();
 	Imu::Instance()->Init_SPI();
-	//Imu::Instance()->Init_DMA();
-//	Imu::Instance()->Init(IMU0);
-//	Imu::Instance()->Init(IMU1);
-//	Imu::Instance()->Init(IMU2);
-//	Imu::Instance()->Init(IMU3);
-//	Imu::Instance()->Init(IMU4);
-//	Imu::Instance()->Init(IMU5);
 	Imu::Instance()->Init_IT();
 	Imu::Instance()->EnableITx(IMU1,DISABLE);
 	Imu::Instance()->AutoUpdate(DISABLE);
 	LED::Instance()->OFF();
 	Timer HeartBeat(500,1000);
-	Timer Delay(500,10);
 	uint32_t count=0;
 	uint32_t count1=0;
 	
@@ -43,7 +35,7 @@ int main(void)
 	AHRS0.Init();
 	AHRS1.Init();
 	AHRS2.Init();
-//	AHRS3.Init();
+	AHRS3.Init();
 	AHRS4.Init();
 	AHRS5.Init();
 	short gyro[3],accl[3],sensors;
@@ -53,22 +45,18 @@ int main(void)
 	while(1)
 	{
 		++count;
-//		AHRS0.getYawPitchRoll(Rx_buf);
-//		AHRS1.getYawPitchRoll(Rx_buf);
+		AHRS0.getYawPitchRoll(Rx_buf);
+		AHRS1.getYawPitchRoll(Rx_buf);
 		AHRS2.getYawPitchRoll(Rx_buf);
 		AHRS3.getYawPitchRoll(Rx_buf);
-//		AHRS4.getYawPitchRoll(Rx_buf);
-//		AHRS5.getYawPitchRoll(Rx_buf);
+		AHRS4.getYawPitchRoll(Rx_buf);
+		AHRS5.getYawPitchRoll(Rx_buf);
 		if(HeartBeat.isAbsoluteTimeUp())
 		{
 			myprintf("loop:%d\r\n",count);
 			count=0;
 			myprintf("angle:%f %f %f \r\n",Rx_buf[0],Rx_buf[1],Rx_buf[2]);
 			LED::Instance()->Toggle();
-		}
-		if(Delay.isAbsoluteTimeUp())
-		{
-			WhoAmI[1]=0xff;
 		}
 	}
 }
