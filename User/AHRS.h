@@ -3,7 +3,7 @@
 #include "stm32f4xx.h"
 #include "imu.h"
 
-#define USE_CCMRAM			1
+#define USE_CCMRAM			0
 #define CCMRAM __attribute__((section("ccmram")))
 
 
@@ -38,11 +38,13 @@ private:
 	volatile uint32_t _lastUpdate, _now; // 采样周期计数 单位 us
 	volatile float _q0, _q1, _q2, _q3; // 全局四元数
 	int16_t _Gx_offset,_Gy_offset,_Gz_offset;
-	volatile int16_t  FIFO[6][11];
-	float _Gz_Buf_132E[400];
-	float _Ax_Buf_1662[400];
-	float _Ay_Buf_1982[400];
-	float _Az_Buf_1CA2[400];
+#if USE_CCMRAM==0
+	static float Gz_Buf[6][400];
+	static float	Ax_Buf[6][400];
+	static float Ay_Buf[6][400];
+	static float Az_Buf[6][400];
+	static int16_t  FIFO[6][6][11];
+#endif
 	float _Ax_Last_165C;
 	float _Ay_Last_165E;
 	float _Az_Last_1660;
@@ -52,7 +54,7 @@ private:
 	int16_t _ram_234;
 };
 
-extern class _AHRS AHRS0,AHRS1;
+extern class _AHRS AHRS0,AHRS1,AHRS2,AHRS3,AHRS4,AHRS5;
 
 
 #endif
